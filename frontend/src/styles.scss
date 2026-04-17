@@ -1,16 +1,402 @@
-/* PrimeNG theme + icons + base styles */
+/* ============================================================
+ * Tema GreenYellow — light + dark via [data-theme].
+ * Overrides nas CSS vars do PrimeNG.
+ * ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700&family=Nunito:wght@600;700;800&display=swap');
 @import 'primeng/resources/themes/lara-light-blue/theme.css';
 @import 'primeng/resources/primeng.css';
 @import 'primeicons/primeicons.css';
 
-:root {
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+:root,
+:root[data-theme='light'] {
+  /* Paleta GreenYellow */
+  --gy-green:       #87BC25;
+  --gy-green-dark:  #266400;
+  --gy-green-50:    #F1F7E6;
+  --gy-green-100:   #DCEBC0;
+  --gy-yellow:      #FCCC1D;
+  --gy-yellow-50:   #FEF8E1;
+
+  /* Superficies (light) */
+  --gy-bg:          #F7F7F7;
+  --gy-surface:     #ffffff;
+  --gy-surface-2:   #fafbfc;
+  --gy-border:      #e5e7eb;
+  --gy-border-soft: #f1f2f4;
+  --gy-text:        #414856;
+  --gy-text-soft:   #6b7280;
+  --gy-shadow:      0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.03);
+  --gy-shadow-lg:   0 8px 24px rgba(135, 188, 37, 0.12);
+
+  /* Overrides PrimeNG */
+  --primary-color:       var(--gy-green-dark);
+  --primary-color-text:  #ffffff;
+  --text-color:          var(--gy-text);
+  --text-color-secondary: var(--gy-text-soft);
+  --surface-ground:      var(--gy-bg);
+  --surface-card:        var(--gy-surface);
+  --surface-border:      var(--gy-border);
+  --surface-hover:       var(--gy-surface-2);
+  --highlight-bg:        var(--gy-green-50);
+  --highlight-text-color: var(--gy-green-dark);
+  --border-radius:       10px;
+  --focus-ring:          0 0 0 3px rgba(135, 188, 37, 0.35);
 }
 
-html,
-body {
+:root[data-theme='dark'] {
+  /* Verde fica levemente ajustado pra caber no dark */
+  --gy-green:       #A4D330;
+  --gy-green-dark:  #266400;
+  --gy-green-50:    #1B2B10;
+  --gy-green-100:   #243E16;
+  --gy-yellow:      #FCCC1D;
+  --gy-yellow-50:   #2E2410;
+
+  /* Superficies (dark — slate-neutral com toque quente) */
+  --gy-bg:          #0F1419;
+  --gy-surface:     #1A1F2A;
+  --gy-surface-2:   #242A37;
+  --gy-border:      #2D3442;
+  --gy-border-soft: #252B38;
+  --gy-text:        #E5E7EB;
+  --gy-text-soft:   #94A3B8;
+  --gy-shadow:      0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --gy-shadow-lg:   0 8px 24px rgba(0, 0, 0, 0.35);
+
+  --primary-color:       var(--gy-green);
+  --primary-color-text:  #0F1419;
+  --text-color:          var(--gy-text);
+  --text-color-secondary: var(--gy-text-soft);
+  --surface-ground:      var(--gy-bg);
+  --surface-card:        var(--gy-surface);
+  --surface-border:      var(--gy-border);
+  --surface-hover:       var(--gy-surface-2);
+  --highlight-bg:        var(--gy-green-50);
+  --highlight-text-color: var(--gy-green);
+  --focus-ring:          0 0 0 3px rgba(164, 211, 48, 0.35);
+}
+
+* { box-sizing: border-box; }
+
+:root {
+  font-family: 'Nunito Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color-scheme: light;
+}
+:root[data-theme='dark'] { color-scheme: dark; }
+
+html, body {
   margin: 0;
   padding: 0;
-  background: #f5f6f8;
-  color: #2d3748;
+  background: var(--gy-bg);
+  color: var(--gy-text);
+  min-height: 100vh;
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Nunito', 'Nunito Sans', sans-serif;
+  font-weight: 700;
+  color: var(--gy-text);
+  letter-spacing: -0.005em;
+}
+
+/* Focus acessivel */
+*:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 6px;
+}
+
+/* Overrides PrimeNG (por componente) */
+.p-inputtext,
+.p-inputnumber-input,
+.p-calendar .p-inputtext {
+  background: var(--gy-surface);
+  color: var(--gy-text);
+  border-color: var(--gy-border);
+  border-radius: 8px;
+  font-family: 'Nunito Sans', sans-serif;
+}
+.p-inputtext:enabled:focus,
+.p-inputnumber-input:enabled:focus {
+  border-color: var(--gy-green);
+  box-shadow: var(--focus-ring);
+}
+.p-inputtext:enabled:hover,
+.p-inputnumber-input:enabled:hover {
+  border-color: var(--gy-text-soft);
+}
+
+.p-button {
+  border-radius: 8px;
+  font-family: 'Nunito Sans', sans-serif;
+  font-weight: 700;
+  transition: background-color 160ms ease, box-shadow 160ms ease, transform 120ms ease;
+}
+.p-button:hover:not(:disabled) { transform: translateY(-1px); }
+.p-button:active { transform: translateY(0); }
+.p-button.p-button-outlined { border-width: 1.5px; }
+
+/* SelectButton: segmentos separados com gap, todos arredondados */
+.p-selectbutton {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+.p-selectbutton .p-button {
+  background: var(--gy-surface-2);
+  color: var(--gy-text-soft);
+  border: 1px solid var(--gy-border);
+  border-radius: 8px !important;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.p-selectbutton .p-button:hover:not(.p-highlight):not(:disabled) {
+  background: var(--gy-green-50);
+  border-color: var(--gy-green);
+  color: var(--gy-green-dark);
+}
+.p-selectbutton .p-button.p-highlight {
+  background: var(--gy-green-dark);
+  border-color: var(--gy-green-dark);
+  color: #fff;
+}
+:root[data-theme='dark'] .p-selectbutton .p-button.p-highlight {
+  background: var(--gy-green);
+  border-color: var(--gy-green);
+  color: var(--gy-bg);
+}
+
+/* Calendar com iconDisplay="input": icone como texto sutil no canto */
+.p-calendar .p-datepicker-trigger,
+.p-calendar .p-input-icon {
+  color: var(--gy-text-soft);
+  background: transparent;
+  border: none;
+  width: auto;
+  padding: 0 0.6rem;
+}
+.p-calendar .p-datepicker-trigger:hover,
+.p-calendar .p-datepicker-trigger:enabled:hover {
+  background: transparent;
+  color: var(--gy-green-dark);
+}
+:root[data-theme='dark'] .p-calendar .p-datepicker-trigger:hover {
+  color: var(--gy-green);
+}
+.p-calendar .p-datepicker-trigger .p-button-icon,
+.p-calendar .p-input-icon i {
+  font-size: 0.95rem;
+}
+
+.p-datatable .p-datatable-thead > tr > th {
+  background: var(--gy-green-50);
+  color: var(--gy-green-dark);
+  border-bottom: 1px solid var(--gy-border);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.75rem 1rem;
+}
+:root[data-theme='dark'] .p-datatable .p-datatable-thead > tr > th {
+  color: var(--gy-green);
+}
+.p-datatable .p-datatable-tbody > tr {
+  background: var(--gy-surface);
+  color: var(--gy-text);
+}
+.p-datatable .p-datatable-tbody > tr > td {
+  border-bottom: 1px solid var(--gy-border-soft);
+  padding: 0.85rem 1rem;
+  font-size: 0.92rem;
+}
+.p-datatable .p-datatable-tbody > tr:hover > td {
+  background: var(--gy-surface-2);
+}
+
+.p-card {
+  background: var(--gy-surface);
+  color: var(--gy-text);
+  border-radius: 14px;
+  border: 1px solid var(--gy-border);
+  box-shadow: var(--gy-shadow);
+}
+.p-card .p-card-body { padding: 1.4rem; }
+
+/* Skeleton: base calma com band verde translucido deslizando */
+.p-skeleton {
+  position: relative;
+  background-color: var(--gy-border-soft);
+  background-image: linear-gradient(
+    110deg,
+    transparent 0%,
+    transparent 40%,
+    rgba(135, 188, 37, 0.22) 50%,
+    transparent 60%,
+    transparent 100%
+  );
+  background-size: 250% 100%;
+  background-repeat: no-repeat;
+  animation: gy-shimmer 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  border-radius: 6px;
+  overflow: hidden;
+}
+:root[data-theme='dark'] .p-skeleton {
+  background-color: var(--gy-surface-2);
+  background-image: linear-gradient(
+    110deg,
+    transparent 0%,
+    transparent 40%,
+    rgba(164, 211, 48, 0.18) 50%,
+    transparent 60%,
+    transparent 100%
+  );
+}
+@keyframes gy-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Tabela gy: barra verde fluindo no topo durante loading + stagger fade-in das rows */
+.gy-table {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.gy-table::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 30%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--gy-green) 50%,
+    transparent 100%
+  );
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+  animation: gy-loading-bar 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-play-state: paused;
+}
+.gy-table.is-loading::before {
+  opacity: 1;
+  animation-play-state: running;
+}
+@keyframes gy-loading-bar {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+/* Garante que o wrapper interno do p-datatable nao crie scroll
+   enquanto as rows estao animando */
+.gy-table .p-datatable-wrapper {
+  overflow: hidden;
+}
+
+/* Stagger fade-in das linhas — apenas opacity pra nao mexer em layout/scroll */
+.gy-table .p-datatable-tbody > tr {
+  animation: gy-row-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+@keyframes gy-row-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@for $i from 1 through 20 {
+  .gy-table .p-datatable-tbody > tr:nth-child(#{$i}) {
+    animation-delay: #{($i - 1) * 40}ms;
+  }
+}
+
+.p-toast .p-toast-message {
+  border-radius: 10px;
+  background: var(--gy-surface);
+  color: var(--gy-text);
+  border: 1px solid var(--gy-border);
+  box-shadow: var(--gy-shadow-lg);
+}
+.p-toast .p-toast-message-success {
+  border-left: 4px solid var(--gy-green);
+}
+.p-toast .p-toast-message-error {
+  border-left: 4px solid #ef4444;
+}
+.p-toast .p-toast-message-info {
+  border-left: 4px solid var(--gy-green-dark);
+}
+
+/* Paginator GreenYellow */
+.p-paginator {
+  background: transparent;
+  color: var(--gy-text);
+  border: none;
+  border-top: 1px solid var(--gy-border);
+  padding: 0.85rem 0.5rem 0.2rem;
+  margin-top: 0.5rem;
+  justify-content: center;
+  gap: 0.25rem;
+}
+/* O wrapper interno dos numeros precisa de gap proprio */
+.p-paginator .p-paginator-pages {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.p-paginator .p-paginator-element,
+.p-paginator .p-paginator-page {
+  min-width: 34px;
+  height: 34px;
+  border-radius: 8px !important;
+  background: transparent;
+  color: var(--gy-text-soft);
+  border: none;
+  margin: 0;
+  font-family: 'Nunito Sans', sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.p-paginator .p-paginator-element:not(.p-disabled):hover,
+.p-paginator .p-paginator-page:not(.p-highlight):hover {
+  background: var(--gy-green-50);
+  color: var(--gy-green-dark);
+}
+:root[data-theme='dark'] .p-paginator .p-paginator-element:not(.p-disabled):hover,
+:root[data-theme='dark'] .p-paginator .p-paginator-page:not(.p-highlight):hover {
+  color: var(--gy-green);
+}
+.p-paginator .p-paginator-page.p-highlight {
+  background: var(--gy-green-dark);
+  color: #fff;
+}
+:root[data-theme='dark'] .p-paginator .p-paginator-page.p-highlight {
+  background: var(--gy-green);
+  color: var(--gy-bg);
+}
+.p-paginator .p-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.p-paginator .p-paginator-current {
+  color: var(--gy-text-soft);
+  font-size: 0.82rem;
+}
+
+/* Scrollbar mais sobria */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--gy-border); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--gy-text-soft); }
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

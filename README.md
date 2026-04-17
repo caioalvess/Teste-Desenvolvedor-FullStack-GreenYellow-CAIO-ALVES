@@ -150,11 +150,30 @@ docker compose down -v        # para + apaga volumes (reset total)
 ## 5. Pipeline de uso
 
 1. **Abrir** `http://localhost:4200`.
-2. Clicar em **"Selecionar CSV"** → escolher `arquivo-modelo.csv` (ou outro).
-3. Aguardar a mensagem verde "Arquivo enviado: ...".
-4. Preencher **MetricId**, **Data inicial**, **Data final**, escolher **Dia / Mês / Ano**.
+2. Clicar em **"Selecionar CSV"** (ou arrastar) → escolher `arquivo-modelo.csv`.
+3. Aguardar a mensagem verde "Arquivo enviado: ...". Os 3 campos de filtro são preenchidos automaticamente a partir do CSV.
+4. Ajustar **MetricId**, **Data inicial**, **Data final**, escolher **Dia / Mês / Ano**.
 5. Clicar **Consultar** → tabela com os valores agregados.
 6. Clicar **Baixar Excel** → arquivo `.xlsx` com colunas `MetricId | DateTime | AggDay | AggMonth | AggYear`.
+
+### 5.1 Dataset de demonstração (metric 999)
+
+Pra demonstrar cenários com **muitos pontos** (paginação ativa, 60+ resultados), há um seed SQL que popula o banco com dados sintéticos:
+
+```bash
+docker exec -i gy-postgres psql -U gy_user -d gy_metrics < db/seed-demo.sql
+```
+
+Cria 1440 leituras para `metricId 999` (60 dias × 24 horas, Jan-Fev/2024). Idempotente via `ON CONFLICT DO NOTHING`.
+
+**Regra do front:** os botões "Consultar" e "Baixar Excel" ficam desabilitados até que (a) os 3 campos de filtro estejam preenchidos E (b) um CSV tenha sido enviado. **Exceção:** `metricId === 999` é reconhecido como dataset pré-seedeado e libera os botões sem precisar do upload — isso permite testar o fluxo de muitos resultados / paginação sem precisar gerar um CSV grande.
+
+**Para testar paginação:**
+- MetricId: `999`
+- Data inicial: `01-01-2024`
+- Data final: `01-03-2024`
+- Granularidade: `Dia`
+- Resultado: 60 pontos em 8 páginas.
 
 Via curl:
 ```bash
@@ -300,6 +319,7 @@ Em ordem decrescente de impacto:
 | 7.5 | Dockerfile multi-stage prod backend | [docs/fase-7.5-docker-prod-backend.md](docs/fase-7.5-docker-prod-backend.md) |
 | 7.6 | Dockerfile multi-stage prod frontend + nginx | [docs/fase-7.6-docker-prod-frontend.md](docs/fase-7.6-docker-prod-frontend.md) |
 | 7.7 | Profile `prod` no compose | [docs/fase-7.7-compose-profile-prod.md](docs/fase-7.7-compose-profile-prod.md) |
+| 7.8 | Redesign do frontend (tema GreenYellow, dark mode, split layout) | [docs/fase-7.8-frontend-polish.md](docs/fase-7.8-frontend-polish.md) |
 | 7.9 | Polimento final (`.gitignore`, healthcheck front, regressão) | [docs/fase-7.9-polimento.md](docs/fase-7.9-polimento.md) |
 
 ---
