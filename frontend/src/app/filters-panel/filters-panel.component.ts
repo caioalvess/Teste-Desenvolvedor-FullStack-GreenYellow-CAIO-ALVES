@@ -212,13 +212,16 @@ const GRANULARITY_OPTIONS: Array<{ label: string; value: Granularity }> = [
   `,
   styles: [
     `
-      :host { display: block; }
+      :host { display: block; width: 100%; }
       .panel {
         background: var(--gy-surface);
         border: 1px solid var(--gy-border);
         border-radius: 14px;
         padding: 1.5rem;
         box-shadow: var(--gy-shadow);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
       }
       .panel-head h2 {
         font-family: 'Nunito', sans-serif;

@@ -83,14 +83,14 @@ import { MetricsStore } from '../metrics.store';
   `,
   styles: [
     `
-      :host { display: block; height: 100%; }
+      :host { display: block; width: 100%; }
       .panel {
         background: var(--gy-surface);
         border: 1px solid var(--gy-border);
         border-radius: 14px;
         padding: 1.5rem;
         box-shadow: var(--gy-shadow);
-        min-height: 100%;
+        height: 100%;
         display: flex;
         flex-direction: column;
       }
@@ -131,17 +131,18 @@ import { MetricsStore } from '../metrics.store';
 
       .body {
         flex: 1;
-        min-height: 260px;
+        display: flex;
+        flex-direction: column;
         overflow: hidden; /* evita scroll durante o transform dos rows */
       }
 
       .empty {
+        flex: 1;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         gap: 0.75rem;
-        min-height: 260px;
         padding: 2rem 1rem;
         text-align: center;
         background: var(--gy-surface-2);

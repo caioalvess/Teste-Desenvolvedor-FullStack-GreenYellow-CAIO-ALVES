@@ -152,14 +152,22 @@ import { ThemeService } from './theme.service';
         display: grid;
         grid-template-columns: 360px 1fr;
         gap: 1.25rem;
-        align-items: start;
+        /* align-items: stretch (padrao do grid) faz as duas colunas
+           terem a mesma altura — a mais alta dita o tamanho */
       }
-      .left { position: sticky; top: 5rem; }
-      .right { min-width: 0; }
+      .left,
+      .right {
+        min-width: 0;
+        display: flex;
+      }
+      .left > *,
+      .right > * {
+        flex: 1;
+        min-width: 0;
+      }
 
       @media (max-width: 900px) {
         .split { grid-template-columns: 1fr; }
-        .left { position: static; }
         .brand-divider, .brand-sub { display: none; }
         .meta { display: none; }
       }
