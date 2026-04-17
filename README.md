@@ -157,7 +157,7 @@ Rodar: `docker compose exec api npm test`.
 
 ### O que **não** foi testado e por quê
 
-- **Renderização visual dos componentes Angular.** Precisaria de Playwright ou Karma — adiciona ~300MB de deps pra validar ~2 componentes simples. A camada de lógica deles já tá coberta pelo backend (E2E) e o próprio `ng build` pega problemas de tipo/template. Validação visual ficou como walkthrough manual no browser (documentado em `docs/fase-6-frontend-angular.md`).
+- **Renderização visual dos componentes Angular.** Precisaria de Playwright ou Karma — adiciona ~300MB de deps pra validar ~2 componentes simples. A camada de lógica deles já tá coberta pelo backend (E2E) e o próprio `ng build` pega problemas de tipo/template. Validação visual ficou como walkthrough manual no browser.
 - **Cenários de falha de infra** (Rabbit cai, Postgres derruba conexão no meio). Precisa de toxiproxy/chaos tools pra simular direito; ROI baixo pro escopo. O código já tem os handlers certos (try/catch + nack, client.end() em finally) e o `ON CONFLICT` cobre reprocessamento.
 - **Carga com arquivo enorme.** Validado manualmente com 1.2M linhas (+53MiB de pico) — automatizar no Jest seria lento (~90s) e depende de hardware. Documentado.
 
@@ -195,13 +195,10 @@ Coisas que eu faria se fosse seguir mantendo em produção:
 ├── db/
 │   └── seed-demo.sql        # seed do metric 999 (demo de paginação)
 ├── infra/azure/             # scripts de deploy no Azure
-├── docs/                    # doc detalhada por fase (opcional)
 ├── docker-compose.yml
 ├── arquivo-modelo.csv       # arquivo de exemplo do enunciado
 └── README.md
 ```
-
-A pasta `docs/` tem uma página por fase com decisões e trade-offs em mais detalhe — fica como leitura opcional pra quem quiser entender o processo em profundidade. Esse README cobre o essencial.
 
 ---
 
