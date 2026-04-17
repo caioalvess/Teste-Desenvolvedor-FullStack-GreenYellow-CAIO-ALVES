@@ -93,7 +93,15 @@ import { ThemeService } from './theme.service';
   `,
   styles: [
     `
-      :host { display: block; }
+      /* Flex column + min-height garante que o footer fique sempre no
+         fundo da pagina, mesmo em telas altas em que o conteudo nao
+         enche a viewport. Com .container flex:1 abaixo, o main cresce
+         e empurra o footer pra baixo. */
+      :host {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
       .gy-header {
         background: var(--gy-surface);
         border-bottom: 1px solid var(--gy-border);
@@ -117,7 +125,7 @@ import { ThemeService } from './theme.service';
         text-decoration: none;
         color: inherit;
       }
-      .brand-logo { display: block; height: 48px; width: auto; }
+      .brand-logo { display: block; height: 36px; width: auto; }
       :root[data-theme='dark'] .brand-logo {
         /* deixa a logo mais legivel no fundo escuro via leve filter */
         filter: brightness(1.15);
@@ -125,7 +133,7 @@ import { ThemeService } from './theme.service';
       .brand-divider {
         display: inline-block;
         width: 1px;
-        height: 30px;
+        height: 24px;
         background: var(--gy-border);
       }
       .brand-sub {
@@ -170,6 +178,8 @@ import { ThemeService } from './theme.service';
         max-width: 1240px;
         margin: 1.5rem auto 3.5rem;
         padding: 0 1.25rem;
+        flex: 1; /* empurra o footer pro fundo em telas altas */
+        width: 100%;
       }
       .split {
         display: grid;
