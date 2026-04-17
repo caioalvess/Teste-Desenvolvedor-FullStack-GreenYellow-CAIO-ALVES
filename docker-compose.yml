@@ -1,0 +1,157 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gy-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gy_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gy_password}
+      POSTGRES_DB: ${POSTGRES_DB:-gy_metrics}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gy_user} -d ${POSTGRES_DB:-gy_metrics}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: gy-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-gy_user}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-gy_password}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: gy-azurite
+    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose --skipApiVersionCheck"
+    ports:
+      - "${AZURITE_BLOB_PORT:-10000}:10000"
+      - "${AZURITE_QUEUE_PORT:-10001}:10001"
+      - "${AZURITE_TABLE_PORT:-10002}:10002"
+    volumes:
+      - azurite_data:/data
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: gy-api
+    environment:
+      PORT: 3000
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-gy_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gy_password}
+      POSTGRES_DB: ${POSTGRES_DB:-gy_metrics}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-gy_user}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-gy_password}
+      AZURITE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=${AZURITE_ACCOUNT_NAME:-devstoreaccount1};AccountKey=${AZURITE_ACCOUNT_KEY};BlobEndpoint=http://azurite:10000/${AZURITE_ACCOUNT_NAME:-devstoreaccount1};"
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      azurite:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: gy-frontend
+    ports:
+      - "${FRONTEND_PORT:-4200}:4200"
+    depends_on:
+      - api
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:4200 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+
+  # ============================================================
+  # Servicos de PRODUCAO — so' sobem com --profile prod
+  #   docker compose --profile prod up -d
+  # Compartilham a mesma infra (postgres/rabbit/azurite).
+  # Portas diferentes dos devs pra permitir co-existencia/compare.
+  # ============================================================
+  api-prod:
+    profiles: ["prod"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: prod
+    container_name: gy-api-prod
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-gy_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gy_password}
+      POSTGRES_DB: ${POSTGRES_DB:-gy_metrics}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-gy_user}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-gy_password}
+      AZURITE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=${AZURITE_ACCOUNT_NAME:-devstoreaccount1};AccountKey=${AZURITE_ACCOUNT_KEY};BlobEndpoint=http://azurite:10000/${AZURITE_ACCOUNT_NAME:-devstoreaccount1};"
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+    ports:
+      - "${API_PROD_PORT:-3003}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      azurite:
+        condition: service_started
+
+  frontend-prod:
+    profiles: ["prod"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: prod
+    container_name: gy-frontend-prod
+    ports:
+      - "${FRONTEND_PROD_PORT:-8080}:80"
+    depends_on:
+      - api-prod
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  backend_node_modules:
+  frontend_node_modules:
+  postgres_data:
+  rabbitmq_data:
+  azurite_data:
