@@ -1,22 +1,25 @@
 import {
   BadRequestException,
   Controller,
+  Get,
+  NotFoundException,
+  Param,
   Post,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadsService } from './uploads.service';
+import { UploadStatus, UploadStatusStore } from './upload-status.store';
 
-// Shape que o AzuriteStorageEngine devolve no objeto `file`:
-// - originalname: nome original do arquivo
-// - filename: o blobName gerado (uuid-nome_seguro.csv)
-// - size: preenchido pelo engine apos uploadStream
 type UploadedCsvFile = Express.Multer.File;
 
 @Controller('uploads')
 export class UploadsController {
-  constructor(private readonly uploads: UploadsService) {}
+  constructor(
+    private readonly uploads: UploadsService,
+    private readonly statusStore: UploadStatusStore,
+  ) {}
 
   @Post()
   @UseInterceptors(FileInterceptor('file'))
@@ -27,5 +30,16 @@ export class UploadsController {
       );
     }
     return this.uploads.handleUpload(file);
+  }
+
+  @Get(':blobName/status')
+  getStatus(@Param('blobName') blobName: string): UploadStatus {
+    const status = this.statusStore.get(blobName);
+    if (!status) {
+      throw new NotFoundException(
+        `status desconhecido para blob '${blobName}'`,
+      );
+    }
+    return status;
   }
 }

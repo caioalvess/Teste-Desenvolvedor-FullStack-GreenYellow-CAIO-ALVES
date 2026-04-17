@@ -1,7 +1,10 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { MessageService } from 'primeng/api';
 import { ApiService } from './api.service';
-import { AggregatedPoint, Granularity } from './models';
+import { AggregatedPoint, Granularity, UploadStatus } from './models';
+
+const POLL_INTERVAL_MS = 500;
+const POLL_TIMEOUT_MS = 120_000;
 
 export interface UploadedFileMeta {
   originalName: string;
@@ -27,6 +30,9 @@ export class MetricsStore {
   // Upload feedback
   readonly lastUpload = signal<UploadedFileMeta | null>(null);
   readonly uploading = signal(false);
+  readonly uploadStatus = signal<UploadStatus | null>(null);
+  private pollHandle?: ReturnType<typeof setInterval>;
+  private pollStartedAt = 0;
 
   // Results state
   readonly data = signal<AggregatedPoint[]>([]);
@@ -55,7 +61,12 @@ export class MetricsStore {
   readonly isSubmittable = computed(() => {
     if (!this.isFormValid()) return false;
     if (this.metricId() === 999) return true;
-    return this.lastUpload() !== null;
+    // CSV precisa estar enviado E processamento concluido (ou desconhecido por
+    // reload da pagina — nesse caso lastUpload seria null e cairia no false).
+    if (this.lastUpload() === null) return false;
+    const status = this.uploadStatus();
+    if (!status) return false;
+    return status.state === 'completed';
   });
 
   private readonly api = inject(ApiService);
@@ -108,6 +119,9 @@ export class MetricsStore {
 
   uploadCsv(file: File): void {
     this.uploading.set(true);
+    this.uploadStatus.set(null);
+    this.stopPolling();
+
     this.api.uploadCsv(file).subscribe({
       next: (res) => {
         this.uploading.set(false);
@@ -119,9 +133,10 @@ export class MetricsStore {
         this.messages.add({
           severity: 'success',
           summary: 'Upload concluído',
-          detail: `${res.originalName} enviado. O processamento ocorre em background.`,
-          life: 5000,
+          detail: `${res.originalName} enviado. Processando…`,
+          life: 4000,
         });
+        this.startPolling(res.blobName);
       },
       error: (err) => {
         this.uploading.set(false);
@@ -133,6 +148,59 @@ export class MetricsStore {
         });
       },
     });
+  }
+
+  private startPolling(blobName: string): void {
+    this.stopPolling();
+    this.pollStartedAt = Date.now();
+
+    const tick = () => {
+      this.api.getUploadStatus(blobName).subscribe({
+        next: (status) => {
+          this.uploadStatus.set(status);
+          if (status.state === 'completed') {
+            this.stopPolling();
+            this.messages.add({
+              severity: 'success',
+              summary: 'Processamento concluído',
+              detail: `${status.rowsProcessed.toLocaleString('pt-BR')} linhas indexadas.`,
+              life: 4000,
+            });
+          } else if (status.state === 'failed') {
+            this.stopPolling();
+            this.messages.add({
+              severity: 'error',
+              summary: 'Falha no processamento',
+              detail: status.error ?? 'Erro desconhecido.',
+              life: 8000,
+            });
+          }
+        },
+        error: () => {
+          // 404 transitorio (status ainda nao registrado) ou rede: ignora este tick
+        },
+      });
+
+      if (Date.now() - this.pollStartedAt > POLL_TIMEOUT_MS) {
+        this.stopPolling();
+        this.messages.add({
+          severity: 'warn',
+          summary: 'Processamento demorado',
+          detail: 'Ainda não concluído após 2 minutos. Tente recarregar a página ou faça novo upload.',
+          life: 8000,
+        });
+      }
+    };
+
+    tick();
+    this.pollHandle = setInterval(tick, POLL_INTERVAL_MS);
+  }
+
+  private stopPolling(): void {
+    if (this.pollHandle) {
+      clearInterval(this.pollHandle);
+      this.pollHandle = undefined;
+    }
   }
 
   prefillFromMeta(meta: {
@@ -152,7 +220,9 @@ export class MetricsStore {
    */
   clearUpload(): void {
     const removed = this.lastUpload();
+    this.stopPolling();
     this.lastUpload.set(null);
+    this.uploadStatus.set(null);
     if (removed) {
       this.messages.add({
         severity: 'info',

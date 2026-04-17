@@ -18,3 +18,14 @@ export interface AggregateQuery {
   finalDate: string;
   granularity: Granularity;
 }
+
+export type UploadState = 'pending' | 'processing' | 'completed' | 'failed';
+
+export interface UploadStatus {
+  blobName: string;
+  state: UploadState;
+  rowsProcessed: number;
+  error: string | null;
+  startedAt?: string;
+  completedAt?: string;
+}

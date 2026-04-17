@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { InputNumberModule } from 'primeng/inputnumber';
@@ -38,7 +38,9 @@ const GRANULARITY_OPTIONS: Array<{ label: string; value: Granularity }> = [
       <div
         class="drop-zone"
         [class.is-dragging]="isDragging()"
-        [class.has-file]="!!store.lastUpload()"
+        [class.is-processing]="isProcessing()"
+        [class.is-failed]="isFailed()"
+        [class.has-file]="!!store.lastUpload() && !isProcessing() && !isFailed()"
         (dragover)="onDragOver($event)"
         (dragleave)="onDragLeave($event)"
         (drop)="onDrop($event)"
@@ -62,25 +64,56 @@ const GRANULARITY_OPTIONS: Array<{ label: string; value: Granularity }> = [
             <strong>Enviando…</strong>
           </div>
         } @else if (store.lastUpload()) {
-          <div class="drop-content success">
-            <i class="pi pi-check-circle"></i>
-            <strong>{{ store.lastUpload()?.originalName }}</strong>
-            <small>
-              {{ formatBytes(store.lastUpload()?.size ?? 0) }} ·
-              clique para substituir
-            </small>
-          </div>
-          <button
-            type="button"
-            class="clear-btn"
-            (click)="onClear($event)"
-            (keydown.enter)="$event.stopPropagation()"
-            (keydown.space)="$event.stopPropagation()"
-            aria-label="Remover arquivo selecionado"
-            title="Remover arquivo"
-          >
-            <i class="pi pi-times" aria-hidden="true"></i>
-          </button>
+          @if (isProcessing()) {
+            <div class="drop-content processing">
+              <i class="pi pi-spin pi-cog"></i>
+              <strong>Processando arquivo…</strong>
+              <small>
+                {{ store.lastUpload()?.originalName }} ·
+                {{ formatNumber(store.uploadStatus()?.rowsProcessed ?? 0) }} linhas
+              </small>
+              <div class="progress-track">
+                <span class="progress-bar-indeterminate"></span>
+              </div>
+            </div>
+          } @else if (isFailed()) {
+            <div class="drop-content failed">
+              <i class="pi pi-exclamation-triangle"></i>
+              <strong>Falha no processamento</strong>
+              <small>{{ store.uploadStatus()?.error || 'Erro desconhecido' }}</small>
+            </div>
+            <button
+              type="button"
+              class="clear-btn"
+              (click)="onClear($event)"
+              (keydown.enter)="$event.stopPropagation()"
+              (keydown.space)="$event.stopPropagation()"
+              aria-label="Remover arquivo e tentar novamente"
+              title="Remover"
+            >
+              <i class="pi pi-times" aria-hidden="true"></i>
+            </button>
+          } @else {
+            <div class="drop-content success">
+              <i class="pi pi-check-circle"></i>
+              <strong>{{ store.lastUpload()?.originalName }}</strong>
+              <small>
+                {{ formatBytes(store.lastUpload()?.size ?? 0) }} ·
+                {{ formatNumber(store.uploadStatus()?.rowsProcessed ?? 0) }} linhas indexadas
+              </small>
+            </div>
+            <button
+              type="button"
+              class="clear-btn"
+              (click)="onClear($event)"
+              (keydown.enter)="$event.stopPropagation()"
+              (keydown.space)="$event.stopPropagation()"
+              aria-label="Remover arquivo selecionado"
+              title="Remover arquivo"
+            >
+              <i class="pi pi-times" aria-hidden="true"></i>
+            </button>
+          }
         } @else {
           <div class="drop-content">
             <i class="pi pi-cloud-upload"></i>
@@ -207,7 +240,7 @@ const GRANULARITY_OPTIONS: Array<{ label: string; value: Granularity }> = [
         padding: 1.25rem 1rem;
         text-align: center;
         cursor: pointer;
-        transition: border-color 200ms ease, background-color 200ms ease;
+        transition: border-color 300ms ease, background-color 300ms ease;
         outline: none;
         min-height: 132px;
         display: flex;
@@ -259,6 +292,21 @@ const GRANULARITY_OPTIONS: Array<{ label: string; value: Granularity }> = [
         border-color: var(--gy-green);
         background: var(--gy-green-50);
       }
+      /* Processando: fundo + borda amarelos da marca */
+      .drop-zone.is-processing {
+        border-style: solid;
+        border-color: var(--gy-yellow);
+        background: var(--gy-yellow-50);
+      }
+      /* Erro: fundo + borda vermelhos de atencao */
+      .drop-zone.is-failed {
+        border-style: solid;
+        border-color: #ef4444;
+        background: #fef2f2;
+      }
+      :root[data-theme='dark'] .drop-zone.is-failed {
+        background: #3a1414;
+      }
       .drop-content {
         display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
       }
@@ -279,6 +327,58 @@ const GRANULARITY_OPTIONS: Array<{ label: string; value: Granularity }> = [
       }
       .drop-content.success strong { color: var(--gy-green-dark); }
       :root[data-theme='dark'] .drop-content.success strong { color: var(--gy-green); }
+
+      /* Estado processing: texto/icone amber p/ combinar com bg amarelo */
+      .drop-content.processing strong { color: #92400e; }
+      .drop-content.processing i {
+        color: #d97706;
+        animation-duration: 1.8s;
+      }
+      :root[data-theme='dark'] .drop-content.processing strong { color: #fcd34d; }
+      :root[data-theme='dark'] .drop-content.processing i { color: var(--gy-yellow); }
+
+      .progress-track {
+        position: relative;
+        width: 100%;
+        max-width: 220px;
+        height: 3px;
+        background: rgba(217, 119, 6, 0.2);
+        border-radius: 999px;
+        overflow: hidden;
+        margin-top: 0.5rem;
+      }
+      .progress-bar-indeterminate {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 35%;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          #d97706 50%,
+          transparent 100%
+        );
+        animation: gy-drop-bar 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+      :root[data-theme='dark'] .progress-bar-indeterminate {
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          var(--gy-yellow) 50%,
+          transparent 100%
+        );
+      }
+      @keyframes gy-drop-bar {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(380%); }
+      }
+
+      /* Estado failed: texto/icone vermelhos p/ combinar com bg */
+      .drop-content.failed strong { color: #991b1b; }
+      .drop-content.failed i { color: #dc2626; }
+      :root[data-theme='dark'] .drop-content.failed strong { color: #fca5a5; }
+      :root[data-theme='dark'] .drop-content.failed i { color: #f87171; }
 
       .divider { height: 1px; background: var(--gy-border); margin: 1.25rem 0; }
 
@@ -318,6 +418,14 @@ export class FiltersPanelComponent {
   readonly granularityOptions = GRANULARITY_OPTIONS;
   readonly store = inject(MetricsStore);
   readonly isDragging = signal(false);
+
+  readonly isProcessing = computed(() => {
+    const s = this.store.uploadStatus()?.state;
+    return s === 'pending' || s === 'processing';
+  });
+  readonly isFailed = computed(
+    () => this.store.uploadStatus()?.state === 'failed',
+  );
 
   onDragOver(event: DragEvent): void {
     event.preventDefault();
@@ -370,5 +478,9 @@ export class FiltersPanelComponent {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+  }
+
+  formatNumber(n: number): string {
+    return n.toLocaleString('pt-BR');
   }
 }

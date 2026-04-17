@@ -5,6 +5,7 @@ import {
   AggregatedPoint,
   AggregateQuery,
   UploadResponse,
+  UploadStatus,
 } from './models';
 
 const API_BASE =
@@ -30,6 +31,12 @@ export class ApiService {
     return this.http.get<AggregatedPoint[]>(`${API_BASE}/metrics/aggregate`, {
       params,
     });
+  }
+
+  getUploadStatus(blobName: string): Observable<UploadStatus> {
+    return this.http.get<UploadStatus>(
+      `${API_BASE}/uploads/${encodeURIComponent(blobName)}/status`,
+    );
   }
 
   reportUrl(q: Omit<AggregateQuery, 'granularity'>): string {
