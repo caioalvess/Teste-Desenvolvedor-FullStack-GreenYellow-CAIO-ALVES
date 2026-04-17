@@ -8,7 +8,7 @@ import { SelectButtonModule } from 'primeng/selectbutton';
 import { MetricsStore } from '../metrics.store';
 import { Granularity } from '../models';
 import { DateMaskDirective } from '../date-mask.directive';
-import { extractCsvMeta } from '../csv-meta.util';
+import { formatBytes, formatNumber } from '../format.util';
 
 const GRANULARITY_OPTIONS: Array<{ label: string; value: Granularity }> = [
   { label: 'Dia', value: 'DAY' },
@@ -442,12 +442,12 @@ export class FiltersPanelComponent {
     event.preventDefault();
     this.isDragging.set(false);
     const file = event.dataTransfer?.files?.[0];
-    if (file) this.handleFile(file);
+    if (file) this.store.acceptCsvFile(file);
   }
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
-    if (file) this.handleFile(file);
+    if (file) this.store.acceptCsvFile(file);
     input.value = '';
   }
 
@@ -456,34 +456,7 @@ export class FiltersPanelComponent {
     this.store.clearUpload();
   }
 
-  private async handleFile(file: File): Promise<void> {
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      // delega o erro pra mensageria — aqui apenas faz guard
-      return;
-    }
-    // Extrai metadados em paralelo com o upload pra pre-preencher o form
-    this.prefillFromFile(file).catch(() => undefined);
-    this.store.uploadCsv(file);
-  }
-
-  private async prefillFromFile(file: File): Promise<void> {
-    const meta = await extractCsvMeta(file);
-    if (meta.metricId !== null && meta.firstDate && meta.lastDate) {
-      this.store.prefillFromMeta({
-        metricId: meta.metricId,
-        firstDate: meta.firstDate,
-        lastDate: meta.lastDate,
-      });
-    }
-  }
-
-  formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-  }
-
-  formatNumber(n: number): string {
-    return n.toLocaleString('pt-BR');
-  }
+  // Expostos como propriedades pra serem chamados direto no template.
+  readonly formatBytes = formatBytes;
+  readonly formatNumber = formatNumber;
 }

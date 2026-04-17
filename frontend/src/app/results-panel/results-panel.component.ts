@@ -3,6 +3,7 @@ import { Component, computed, inject } from '@angular/core';
 import { TableModule } from 'primeng/table';
 import { SkeletonModule } from 'primeng/skeleton';
 import { MetricsStore } from '../metrics.store';
+import { formatDate } from '../format.util';
 
 @Component({
   selector: 'app-results-panel',
@@ -193,10 +194,5 @@ export class ResultsPanelComponent {
     }
   }
 
-  formatDate(d: Date | null): string {
-    if (!d) return '—';
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    return `${dd}/${mm}/${d.getFullYear()}`;
-  }
+  readonly formatDate = formatDate;
 }

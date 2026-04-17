@@ -1,6 +1,10 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription, catchError, of, switchMap, timer } from 'rxjs';
 import { MessageService } from 'primeng/api';
 import { ApiService } from './api.service';
+import { extractCsvMeta } from './csv-meta.util';
+import { formatNumber } from './format.util';
 import { AggregatedPoint, Granularity, UploadStatus } from './models';
 
 const POLL_INTERVAL_MS = 500;
@@ -31,8 +35,7 @@ export class MetricsStore {
   readonly lastUpload = signal<UploadedFileMeta | null>(null);
   readonly uploading = signal(false);
   readonly uploadStatus = signal<UploadStatus | null>(null);
-  private pollHandle?: ReturnType<typeof setInterval>;
-  private pollStartedAt = 0;
+  private pollSub?: Subscription;
 
   // Results state
   readonly data = signal<AggregatedPoint[]>([]);
@@ -71,6 +74,7 @@ export class MetricsStore {
 
   private readonly api = inject(ApiService);
   private readonly messages = inject(MessageService);
+  private readonly destroyRef = inject(DestroyRef);
 
   consultar(): void {
     if (!this.isFormValid()) return;
@@ -117,6 +121,17 @@ export class MetricsStore {
     });
   }
 
+  /**
+   * Entrada unica pra um arquivo CSV vindo da UI (dropzone ou file picker):
+   * valida extensao, dispara o prefill do form a partir dos metadados
+   * do CSV em paralelo (best-effort) e inicia o upload.
+   */
+  acceptCsvFile(file: File): void {
+    if (!file.name.toLowerCase().endsWith('.csv')) return;
+    this.prefillFromFile(file).catch(() => undefined);
+    this.uploadCsv(file);
+  }
+
   uploadCsv(file: File): void {
     this.uploading.set(true);
     this.uploadStatus.set(null);
@@ -150,56 +165,75 @@ export class MetricsStore {
     });
   }
 
+  /**
+   * Polling do status de processamento via RxJS timer. Cancela
+   * automaticamente quando o status fica terminal (completed/failed),
+   * quando estoura timeout, quando um novo upload comeca (stopPolling)
+   * ou quando o injector root e' destruido (takeUntilDestroyed).
+   *
+   * Erros de tick individual (ex.: 404 transitorio enquanto a mensagem
+   * ainda nao foi consumida) sao silenciados com catchError -> of(null).
+   */
   private startPolling(blobName: string): void {
     this.stopPolling();
-    this.pollStartedAt = Date.now();
+    const startedAt = Date.now();
 
-    const tick = () => {
-      this.api.getUploadStatus(blobName).subscribe({
-        next: (status) => {
-          this.uploadStatus.set(status);
-          if (status.state === 'completed') {
-            this.stopPolling();
-            this.messages.add({
-              severity: 'success',
-              summary: 'Processamento concluído',
-              detail: `${status.rowsProcessed.toLocaleString('pt-BR')} linhas indexadas.`,
-              life: 4000,
-            });
-          } else if (status.state === 'failed') {
-            this.stopPolling();
-            this.messages.add({
-              severity: 'error',
-              summary: 'Falha no processamento',
-              detail: status.error ?? 'Erro desconhecido.',
-              life: 8000,
-            });
-          }
-        },
-        error: () => {
-          // 404 transitorio (status ainda nao registrado) ou rede: ignora este tick
-        },
+    this.pollSub = timer(0, POLL_INTERVAL_MS)
+      .pipe(
+        switchMap(() =>
+          this.api
+            .getUploadStatus(blobName)
+            .pipe(catchError(() => of(null))),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((status) => {
+        if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+          this.stopPolling();
+          this.messages.add({
+            severity: 'warn',
+            summary: 'Processamento demorado',
+            detail:
+              'Ainda não concluído após 2 minutos. Tente recarregar a página ou faça novo upload.',
+            life: 8000,
+          });
+          return;
+        }
+        if (!status) return; // tick com erro transitorio — ignora
+        this.uploadStatus.set(status);
+        if (status.state === 'completed') {
+          this.stopPolling();
+          this.messages.add({
+            severity: 'success',
+            summary: 'Processamento concluído',
+            detail: `${formatNumber(status.rowsProcessed)} linhas indexadas.`,
+            life: 4000,
+          });
+        } else if (status.state === 'failed') {
+          this.stopPolling();
+          this.messages.add({
+            severity: 'error',
+            summary: 'Falha no processamento',
+            detail: status.error ?? 'Erro desconhecido.',
+            life: 8000,
+          });
+        }
       });
-
-      if (Date.now() - this.pollStartedAt > POLL_TIMEOUT_MS) {
-        this.stopPolling();
-        this.messages.add({
-          severity: 'warn',
-          summary: 'Processamento demorado',
-          detail: 'Ainda não concluído após 2 minutos. Tente recarregar a página ou faça novo upload.',
-          life: 8000,
-        });
-      }
-    };
-
-    tick();
-    this.pollHandle = setInterval(tick, POLL_INTERVAL_MS);
   }
 
   private stopPolling(): void {
-    if (this.pollHandle) {
-      clearInterval(this.pollHandle);
-      this.pollHandle = undefined;
+    this.pollSub?.unsubscribe();
+    this.pollSub = undefined;
+  }
+
+  private async prefillFromFile(file: File): Promise<void> {
+    const meta = await extractCsvMeta(file);
+    if (meta.metricId !== null && meta.firstDate && meta.lastDate) {
+      this.prefillFromMeta({
+        metricId: meta.metricId,
+        firstDate: meta.firstDate,
+        lastDate: meta.lastDate,
+      });
     }
   }
 
