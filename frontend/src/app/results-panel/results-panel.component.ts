@@ -51,8 +51,8 @@ import { MetricsStore } from '../metrics.store';
           <p-table
             [value]="store.loading() ? skeletonRows : store.data()"
             [styleClass]="'gy-table' + (store.loading() ? ' is-loading' : '')"
-            [paginator]="!store.loading() && store.data().length > 8"
-            [rows]="8"
+            [paginator]="!store.loading() && store.data().length > 12"
+            [rows]="12"
             [tableStyle]="{ 'min-width': '320px' }"
           >
             <ng-template pTemplate="header">
@@ -173,7 +173,7 @@ import { MetricsStore } from '../metrics.store';
 })
 export class ResultsPanelComponent {
   readonly store = inject(MetricsStore);
-  readonly skeletonRows = Array.from({ length: 4 });
+  readonly skeletonRows = Array.from({ length: 6 });
 
   readonly showInitial = computed(
     () => !this.store.searched() && !this.store.loading(),

@@ -67,6 +67,29 @@ import { ThemeService } from './theme.service';
         </section>
       </div>
     </main>
+
+    <footer class="gy-footer" role="contentinfo">
+      <div class="gy-footer-inner">
+        <div class="brand-mini">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span class="brand-line">
+            GreenYellow · <span class="muted">Plataforma de Métricas</span>
+          </span>
+        </div>
+        <div class="stack">
+          <span class="stack-label">feito com</span>
+          <span class="pill">Angular</span>
+          <span class="pill">NestJS</span>
+          <span class="pill">Postgres</span>
+          <span class="pill">RabbitMQ</span>
+          <span class="pill">Docker</span>
+        </div>
+        <div class="credit">
+          <span>© {{ year }} · Caio Alves</span>
+          <span class="rights">Todos os direitos reservados</span>
+        </div>
+      </div>
+    </footer>
   `,
   styles: [
     `
@@ -175,12 +198,102 @@ import { ThemeService } from './theme.service';
       @media (max-width: 520px) {
         .header-right { gap: 0.5rem; }
       }
+
+      /* ========== Footer ========== */
+      .gy-footer {
+        background: var(--gy-surface);
+        border-top: 1px solid var(--gy-border);
+        padding: 1.1rem 0;
+        margin-top: auto;
+      }
+      .gy-footer-inner {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 0 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        font-size: 0.8rem;
+        color: var(--gy-text-soft);
+        flex-wrap: wrap;
+      }
+      .brand-mini {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 700;
+        color: var(--gy-text);
+      }
+      .brand-line .muted {
+        color: var(--gy-text-soft);
+        font-weight: 500;
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--gy-green);
+        box-shadow: 0 0 0 0 rgba(135, 188, 37, 0.5);
+        animation: gy-pulse 2.2s ease-in-out infinite;
+      }
+      @keyframes gy-pulse {
+        0%   { box-shadow: 0 0 0 0 rgba(135, 188, 37, 0.5); }
+        50%  { box-shadow: 0 0 0 6px rgba(135, 188, 37, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(135, 188, 37, 0); }
+      }
+      .stack {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .stack-label {
+        margin-right: 0.25rem;
+        font-style: italic;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.18rem 0.55rem;
+        border-radius: 999px;
+        background: var(--gy-green-50);
+        color: var(--gy-green-dark);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      :root[data-theme='dark'] .pill {
+        color: var(--gy-green);
+      }
+      .credit {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        line-height: 1.35;
+        font-variant-numeric: tabular-nums;
+      }
+      .credit > span:first-child {
+        color: var(--gy-text);
+        font-weight: 600;
+      }
+      .credit .rights {
+        font-size: 0.72rem;
+        color: var(--gy-text-soft);
+      }
+      @media (max-width: 720px) {
+        .gy-footer-inner { justify-content: center; text-align: center; }
+        .stack { justify-content: center; }
+        .credit { align-items: center; }
+      }
     `,
   ],
 })
 export class AppComponent {
   readonly store = inject(MetricsStore);
   readonly theme = inject(ThemeService);
+  readonly year = new Date().getFullYear();
 
   readonly lastUploadLabel = computed(() => {
     const up = this.store.lastUpload();

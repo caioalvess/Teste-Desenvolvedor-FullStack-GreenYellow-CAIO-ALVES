@@ -93,6 +93,16 @@ html, body {
   min-height: 100vh;
   transition: background-color 200ms ease, color 200ms ease;
 }
+body {
+  display: flex;
+  flex-direction: column;
+}
+app-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 100vh;
+}
 
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Nunito', 'Nunito Sans', sans-serif;
@@ -209,11 +219,16 @@ h1, h2, h3, h4, h5, h6 {
 }
 .p-datatable .p-datatable-tbody > tr > td {
   border-bottom: 1px solid var(--gy-border-soft);
-  padding: 0.85rem 1rem;
-  font-size: 0.92rem;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
 }
-.p-datatable .p-datatable-tbody > tr:hover > td {
+/* Linhas alternadas (zebra) + hover com tint verde */
+.gy-table .p-datatable-tbody > tr:nth-child(even) > td {
   background: var(--gy-surface-2);
+}
+.gy-table .p-datatable-tbody > tr:hover > td,
+.gy-table .p-datatable-tbody > tr:nth-child(even):hover > td {
+  background: var(--gy-green-50);
 }
 
 .p-card {
@@ -259,10 +274,20 @@ h1, h2, h3, h4, h5, h6 {
   100% { background-position: -200% 0; }
 }
 
-/* Tabela gy: barra verde fluindo no topo durante loading + stagger fade-in das rows */
+/* Tabela gy: flex column pra empurrar paginador ao fundo do panel +
+   barra verde fluindo no topo durante loading + stagger fade-in das rows */
 .gy-table {
   position: relative;
   border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.gy-table .p-datatable-wrapper {
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 .gy-table::before {
@@ -291,12 +316,6 @@ h1, h2, h3, h4, h5, h6 {
 @keyframes gy-loading-bar {
   0%   { transform: translateX(-100%); }
   100% { transform: translateX(400%); }
-}
-
-/* Garante que o wrapper interno do p-datatable nao crie scroll
-   enquanto as rows estao animando */
-.gy-table .p-datatable-wrapper {
-  overflow: hidden;
 }
 
 /* Stagger fade-in das linhas — apenas opacity pra nao mexer em layout/scroll */
