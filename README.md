@@ -55,10 +55,11 @@ docker exec -i gy-postgres psql -U gy_user -d gy_metrics < db/seed-demo.sql
 ### Rodar os testes
 
 ```bash
-docker compose exec api npm test
+docker compose exec api npm test        # backend (25 testes)
+docker compose exec frontend npm test   # frontend (43 testes)
 ```
 
-25 testes — sobem um DB separado (`gy_metrics_test`), 3 suítes, ~8 segundos.
+**68 testes no total.** Backend sobe um DB separado (`gy_metrics_test`) em 3 suítes (~10s); frontend usa Jest + jsdom em 5 suítes (~20s). Detalhes de cobertura na seção *Testes* abaixo.
 
 ### Produção local
 
@@ -84,7 +85,7 @@ docker compose down -v    # reseta tudo, inclusive banco
 - **Fila:** RabbitMQ 3 via `amqplib` direto
 - **Storage:** Azurite em dev, Azure Blob Storage real em prod (mesma connection string, zero mudança de código)
 - **Frontend:** Angular 17 + PrimeNG 17 (fonte Nunito, tema custom com paleta da GreenYellow, dark mode)
-- **Testes:** Jest + Supertest
+- **Testes:** Jest no back (unit + integração real + E2E com Supertest) e no front (jest-preset-angular + jsdom)
 - **Infra:** Docker Compose em dev; Azure Container Apps em prod
 
 ## Fluxo
@@ -145,7 +146,9 @@ Upload streama direto pro blob (a API nunca bufera o arquivo), publica uma mensa
 
 ## Testes
 
-25 testes, 3 suítes:
+**68 testes no total**, divididos em back e front.
+
+### Backend — 25 testes, 3 suítes
 
 | Suíte | Tipo | Casos |
 |-------|------|-------|
@@ -155,9 +158,21 @@ Upload streama direto pro blob (a API nunca bufera o arquivo), publica uma mensa
 
 Rodar: `docker compose exec api npm test`.
 
+### Frontend — 43 testes, 5 suítes
+
+| Suíte | Foco | Casos |
+|-------|------|-------|
+| `format.util.spec.ts` | Formatadores de data/bytes/número | 8 |
+| `csv-meta.util.spec.ts` | Parser de metadados do CSV (BOM, CRLF, `;;`, chunk tail >64KB) | 7 |
+| `api.service.spec.ts` | HTTP calls via `HttpTestingController` | 5 |
+| `theme.service.spec.ts` | Tema com localStorage + `prefers-color-scheme` + effect no DOM | 6 |
+| `metrics.store.spec.ts` | Store central: computeds, exceção metric 999, polling RxJS (completed/failed/404-transitório), clear, consultar | 17 |
+
+Rodar: `docker compose exec frontend npm test`.
+
 ### O que **não** foi testado e por quê
 
-- **Renderização visual dos componentes Angular.** Precisaria de Playwright ou Karma — adiciona ~300MB de deps pra validar ~2 componentes simples. A camada de lógica deles já tá coberta pelo backend (E2E) e o próprio `ng build` pega problemas de tipo/template. Validação visual ficou como walkthrough manual no browser.
+- **Renderização visual dos componentes Angular (PrimeNG).** A lógica de estado e orquestração (store, service, utils, polling) está coberta nas 5 suítes do front. O que não testo é o render da UI em si — `p-table`, `p-calendar`, `p-selectButton` com todos os estilos e estados. Fazer isso com Playwright em CI é possível mas adiciona ~300MB de deps pra validar visual que já é batido por walkthrough manual no browser.
 - **Cenários de falha de infra** (Rabbit cai, Postgres derruba conexão no meio). Precisa de toxiproxy/chaos tools pra simular direito; ROI baixo pro escopo. O código já tem os handlers certos (try/catch + nack, client.end() em finally) e o `ON CONFLICT` cobre reprocessamento.
 - **Carga com arquivo enorme.** Validado manualmente com 1.2M linhas (+53MiB de pico) — automatizar no Jest seria lento (~90s) e depende de hardware. Documentado.
 
@@ -174,17 +189,6 @@ Fica um pouco mais pessoal porque o teste também avalia o processo.
 **Azure free tier não tinha Postgres Flex no `eastus` pra minha subscription.** `az postgres flexible-server list-skus --location eastus` veio vazio. Mudei pra `brazilsouth` (tinha 60+ SKUs) e foi — bônus, menos latência do Brasil.
 
 **Mexer no layout do front foi mais chato do que o back.** Acabei reconstruindo o layout umas 3 vezes — `sticky` conflitava com `align-items: stretch`, paginação crescendo puxava o painel esquerdo junto, skeleton piscava durante a transição. A solução final usa `align-items: stretch` no grid (ambos os painéis ganham a altura do maior sem hardcode de pixel) + reduzir o `rows` da paginação pra garantir que o direito nunca ultrapassa o natural do esquerdo. A tabela tem uma animação de stagger fade-in (rows aparecem em cascata de 40ms) e uma barra verde fluindo no topo durante loading.
-
-## Melhorias futuras
-
-Coisas que eu faria se fosse seguir mantendo em produção:
-
-- **Migrations TypeORM** em vez de `synchronize: true`. Dev só.
-- **Dead Letter Queue** no RabbitMQ + retry com backoff. Hoje o consumer faz `nack(requeue=false)` em erro, então se o parse falhar por bug, a mensagem é descartada depois de logar.
-- **Persistir `UploadStatusStore` em Redis** (hoje é in-memory, perde em restart). Pro escopo do teste tá ok.
-- **Stream do Excel direto no response** com `exceljs.stream.xlsx.WorkbookWriter`. Hoje bufera na memória — bom pra arquivos <10MB, ruim acima.
-- **Auth** (JWT ou OAuth). Endpoints abertos — fora de escopo do enunciado mas óbvio pra prod real.
-- **Teste E2E do front** com Playwright em job de CI separado.
 
 ## Estrutura do repo
 
