@@ -170,13 +170,7 @@ Rodar: `docker compose exec api npm test`.
 
 Rodar: `docker compose exec frontend npm test`.
 
-### O que **não** foi testado e por quê
-
-- **Renderização visual dos componentes Angular (PrimeNG).** A lógica de estado e orquestração (store, service, utils, polling) está coberta nas 5 suítes do front. O que não testo é o render da UI em si — `p-table`, `p-calendar`, `p-selectButton` com todos os estilos e estados. Fazer isso com Playwright em CI é possível mas adiciona ~300MB de deps pra validar visual que já é batido por walkthrough manual no browser.
-- **Cenários de falha de infra** (Rabbit cai, Postgres derruba conexão no meio). Precisa de toxiproxy/chaos tools pra simular direito; ROI baixo pro escopo. O código já tem os handlers certos (try/catch + nack, client.end() em finally) e o `ON CONFLICT` cobre reprocessamento.
-- **Carga com arquivo enorme.** Validado manualmente com 1.2M linhas (+53MiB de pico) — automatizar no Jest seria lento (~90s) e depende de hardware. Documentado.
-
-## O que deu trabalho — diário de bordo
+## Diário de bordo
 
 Fica um pouco mais pessoal porque o teste também avalia o processo.
 
