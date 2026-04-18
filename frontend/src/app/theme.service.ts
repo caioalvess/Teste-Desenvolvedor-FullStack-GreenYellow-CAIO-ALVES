@@ -33,7 +33,8 @@ export class ThemeService {
     } catch {
       // ignore
     }
-    const mql = window.matchMedia?.('(prefers-color-scheme: dark)');
-    return mql?.matches ? 'dark' : 'light';
+    // Default light — ignora `prefers-color-scheme` do SO pra dar
+    // consistencia visual a novos visitantes.
+    return 'light';
   }
 }

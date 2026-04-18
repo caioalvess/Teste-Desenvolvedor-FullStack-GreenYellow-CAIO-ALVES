@@ -47,12 +47,14 @@ describe('ThemeService', () => {
     expect(svc.theme()).toBe('light');
   });
 
-  it('inicializa em dark quando o SO tem prefers-color-scheme: dark', () => {
+  it('ignora prefers-color-scheme: dark do SO e mantem light como default', () => {
+    // Regra do projeto: sem preferencia salva, default sempre light
+    // (consistencia visual pra novos visitantes, independente do SO).
     stubMatchMedia(true);
     TestBed.configureTestingModule({ providers: [ThemeService] });
     const svc = TestBed.inject(ThemeService);
 
-    expect(svc.theme()).toBe('dark');
+    expect(svc.theme()).toBe('light');
   });
 
   it('preferencia do localStorage tem prioridade sobre o SO', () => {
@@ -66,14 +68,14 @@ describe('ThemeService', () => {
     expect(svc.theme()).toBe('light');
   });
 
-  it('ignora valores invalidos no localStorage e cai no fallback do SO', () => {
+  it('ignora valores invalidos no localStorage e cai no default light', () => {
     stubMatchMedia(true);
     localStorage.setItem(STORAGE_KEY, 'invalid-theme');
 
     TestBed.configureTestingModule({ providers: [ThemeService] });
     const svc = TestBed.inject(ThemeService);
 
-    expect(svc.theme()).toBe('dark');
+    expect(svc.theme()).toBe('light');
   });
 
   it('toggle alterna light <-> dark', () => {

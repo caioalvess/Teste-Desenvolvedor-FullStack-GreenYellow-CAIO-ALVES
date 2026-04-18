@@ -10,6 +10,7 @@ import { Granularity } from '../models';
 import { DateMaskDirective } from '../date-mask.directive';
 import { formatBytes, formatDate, formatNumber } from '../format.util';
 import { I18nService } from '../i18n/i18n.service';
+import { ChartExportService } from '../chart-export.service';
 
 type PresetId = 'last7' | 'last30' | 'thisMonth' | 'thisYear';
 interface Preset {
@@ -36,19 +37,20 @@ const PRESETS: Preset[] = [
     DateMaskDirective,
   ],
   template: `
-    <section class="panel" aria-labelledby="filters-title">
-      <header class="panel-head">
-        <h2 id="filters-title">{{ i18n.t('filters.title') }}</h2>
-        <p>{{ i18n.t('filters.subtitle') }}</p>
-      </header>
+    <section class="filters" aria-labelledby="filters-title">
+      <h2 id="filters-title" class="sr-only">{{ i18n.t('filters.title') }}</h2>
 
+      <!-- Arquivo -->
+      <div class="sec-title">{{ i18n.t('filters.sections.file') }}</div>
       <div
-        class="drop-zone"
+        class="dropzone"
         [class.is-dragging]="isDragging()"
+        [class.is-uploading]="store.uploading()"
         [class.is-processing]="isProcessing()"
         [class.is-failed]="isFailed()"
+        [class.is-completed]="isCompleted()"
         [class.is-pending]="!!store.pendingCsv()"
-        [class.has-file]="!!store.lastUpload() && !isProcessing() && !isFailed() && !store.pendingCsv()"
+        [class.is-idle]="isIdle()"
         (dragover)="onDragOver($event)"
         (dragleave)="onDragLeave($event)"
         (drop)="onDrop($event)"
@@ -66,17 +68,18 @@ const PRESETS: Preset[] = [
           hidden
           (change)="onFileSelected($event)"
         />
+
         @if (store.pendingCsv(); as pending) {
-          <div class="preview" role="group" [attr.aria-label]="i18n.t('filters.preview.title')">
-            <header class="preview-head">
-              <i class="pi pi-file" aria-hidden="true"></i>
+          <div class="dz-body dz-preview" role="group" [attr.aria-label]="i18n.t('filters.preview.title')">
+            <div class="dz-head">
+              <div class="dz-ico ico-info"><i class="pi pi-file" aria-hidden="true"></i></div>
               <strong>{{ i18n.t('filters.preview.title') }}</strong>
-            </header>
-            <dl class="preview-grid">
+            </div>
+            <dl class="dz-grid">
               <dt>{{ i18n.t('filters.preview.file') }}</dt>
-              <dd>
-                <span class="fname">{{ pending.file.name }}</span>
-                <span class="fsize">{{ formatBytes(pending.file.size) }}</span>
+              <dd class="truncate">
+                {{ pending.file.name }}
+                <span class="muted">· {{ formatBytes(pending.file.size) }}</span>
               </dd>
               <dt>{{ i18n.t('filters.preview.metricId') }}</dt>
               <dd>
@@ -95,53 +98,45 @@ const PRESETS: Preset[] = [
                 }
               </dd>
             </dl>
-            <div class="preview-actions">
-              <button
-                type="button"
-                class="btn ghost"
-                (click)="onCancelPending($event)"
-              >
+            <div class="dz-actions">
+              <button type="button" class="dz-btn ghost" (click)="onCancelPending($event)">
                 {{ i18n.t('filters.preview.cancel') }}
               </button>
-              <button
-                type="button"
-                class="btn primary"
-                (click)="onConfirmPending($event)"
-              >
+              <button type="button" class="dz-btn primary" (click)="onConfirmPending($event)">
                 <i class="pi pi-send" aria-hidden="true"></i>
                 {{ i18n.t('filters.preview.confirm') }}
               </button>
             </div>
           </div>
         } @else if (store.uploading()) {
-          <div class="drop-content">
-            <i class="pi pi-spin pi-spinner"></i>
+          <div class="dz-body dz-center">
+            <i class="pi pi-spin pi-spinner dz-ico-plain" aria-hidden="true"></i>
             <strong>{{ i18n.t('filters.drop.uploading') }}</strong>
           </div>
-        } @else if (store.lastUpload()) {
-          @if (isProcessing()) {
-            <div class="drop-content processing">
-              <i class="pi pi-spin pi-cog"></i>
+        } @else if (isProcessing()) {
+          <div class="dz-body">
+            <div class="dz-head">
+              <div class="dz-ico ico-processing"><i class="pi pi-spin pi-cog" aria-hidden="true"></i></div>
               <strong>{{ i18n.t('filters.drop.processing') }}</strong>
-              <small>
-                {{ i18n.t('filters.drop.processingHint', {
-                  name: store.lastUpload()?.originalName ?? '',
-                  count: formatNumber(store.uploadStatus()?.rowsProcessed ?? 0)
-                }) }}
-              </small>
-              <div class="progress-track">
-                <span class="progress-bar-indeterminate"></span>
-              </div>
             </div>
-          } @else if (isFailed()) {
-            <div class="drop-content failed">
-              <i class="pi pi-exclamation-triangle"></i>
+            <div class="dz-fname truncate">{{ store.lastUpload()?.originalName }}</div>
+            <div class="dz-meta">
+              <span><b>{{ formatNumber(store.uploadStatus()?.rowsProcessed ?? 0) }}</b> linhas</span>
+            </div>
+            <div class="dz-bar"><span class="dz-bar-indeterminate"></span></div>
+          </div>
+        } @else if (isFailed()) {
+          <div class="dz-body">
+            <div class="dz-head">
+              <div class="dz-ico ico-failed"><i class="pi pi-exclamation-triangle" aria-hidden="true"></i></div>
               <strong>{{ i18n.t('filters.drop.failed') }}</strong>
-              <small>{{ store.uploadStatus()?.error || i18n.t('filters.drop.unknownError') }}</small>
+            </div>
+            <div class="dz-err truncate">
+              {{ store.uploadStatus()?.error || i18n.t('filters.drop.unknownError') }}
             </div>
             <button
               type="button"
-              class="clear-btn"
+              class="dz-x"
               (click)="onClear($event)"
               (keydown.enter)="$event.stopPropagation()"
               (keydown.space)="$event.stopPropagation()"
@@ -150,20 +145,23 @@ const PRESETS: Preset[] = [
             >
               <i class="pi pi-times" aria-hidden="true"></i>
             </button>
-          } @else {
-            <div class="drop-content success">
-              <i class="pi pi-check-circle"></i>
-              <strong>{{ store.lastUpload()?.originalName }}</strong>
-              <small>
-                {{ i18n.t('filters.drop.successHint', {
-                  size: formatBytes(store.lastUpload()?.size ?? 0),
-                  count: formatNumber(store.uploadStatus()?.rowsProcessed ?? 0)
-                }) }}
-              </small>
+          </div>
+        } @else if (isCompleted()) {
+          <div class="dz-body">
+            <div class="dz-head">
+              <div class="dz-ico ico-ok"><i class="pi pi-check" aria-hidden="true"></i></div>
+              <strong>{{ i18n.t('filters.drop.completed') }}</strong>
+            </div>
+            <div class="dz-fname truncate">{{ store.lastUpload()?.originalName }}</div>
+            <div class="dz-meta">
+              <span>
+                <b>{{ formatNumber(store.uploadStatus()?.rowsProcessed ?? 0) }}</b> linhas
+              </span>
+              <span class="muted">· {{ formatBytes(store.lastUpload()?.size ?? 0) }}</span>
             </div>
             <button
               type="button"
-              class="clear-btn"
+              class="dz-x"
               (click)="onClear($event)"
               (keydown.enter)="$event.stopPropagation()"
               (keydown.space)="$event.stopPropagation()"
@@ -172,17 +170,18 @@ const PRESETS: Preset[] = [
             >
               <i class="pi pi-times" aria-hidden="true"></i>
             </button>
-          }
+          </div>
         } @else {
-          <div class="drop-content">
-            <i class="pi pi-cloud-upload"></i>
+          <div class="dz-body dz-center">
+            <i class="pi pi-cloud-upload dz-ico-plain" aria-hidden="true"></i>
             <strong>{{ i18n.t('filters.drop.default') }}</strong>
             <small>{{ i18n.t('filters.drop.defaultHint') }}</small>
           </div>
         }
       </div>
 
-      <div class="divider"></div>
+      <!-- Consulta -->
+      <div class="sec-title">{{ i18n.t('filters.sections.query') }}</div>
 
       <div class="field">
         <label for="metricId">MetricId</label>
@@ -230,7 +229,11 @@ const PRESETS: Preset[] = [
         </div>
       </div>
 
-      <div class="presets" role="group" [attr.aria-label]="i18n.t('filters.presets.label')">
+      <div
+        class="presets"
+        role="group"
+        [attr.aria-label]="i18n.t('filters.presets.label')"
+      >
         @for (preset of presets; track preset.id) {
           <button
             type="button"
@@ -261,7 +264,7 @@ const PRESETS: Preset[] = [
           (onClick)="store.consultar()"
           [loading]="store.loading()"
           [disabled]="!store.isSubmittable()"
-          styleClass="w-full"
+          styleClass="w-full gy-btn-primary"
         />
         <p-button
           [label]="i18n.t('filters.actions.excel')"
@@ -270,8 +273,18 @@ const PRESETS: Preset[] = [
           [outlined]="true"
           (onClick)="store.baixarExcel()"
           [disabled]="!store.isSubmittable()"
-          styleClass="w-full"
+          styleClass="w-full gy-btn-out"
         />
+        @if (showExportPngs()) {
+          <p-button
+            [label]="i18n.t('filters.actions.downloadPngs')"
+            icon="pi pi-images"
+            severity="success"
+            [outlined]="true"
+            (onClick)="chartExport.exportAll()"
+            styleClass="w-full gy-btn-out"
+          />
+        }
         @if (store.isFormValid() && !store.isSubmittable()) {
           <small class="hint-missing-upload" role="status">
             <i class="pi pi-info-circle" aria-hidden="true"></i>
@@ -284,218 +297,343 @@ const PRESETS: Preset[] = [
   styles: [
     `
       :host { display: block; width: 100%; }
-      .panel {
-        background: var(--gy-surface);
-        border: 1px solid var(--gy-border);
-        border-radius: 14px;
-        padding: 1.5rem;
-        box-shadow: var(--gy-shadow);
-        height: 100%;
+      .filters {
         display: flex;
         flex-direction: column;
+        height: 100%;
+        min-height: 0;
       }
-      .panel-head h2 {
-        font-family: 'Nunito', sans-serif;
-        font-size: 1.05rem;
-        font-weight: 800;
-        margin: 0 0 0.2rem;
-      }
-      .panel-head p {
-        margin: 0 0 1.25rem;
-        font-size: 0.85rem;
-        color: var(--gy-text-soft);
+      .sr-only {
+        position: absolute; width: 1px; height: 1px;
+        padding: 0; margin: -1px; overflow: hidden;
+        clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
       }
 
-      .drop-zone {
+      /* Titulos de secao ("Arquivo" / "Consulta"): tipografia com mais
+         presenca + divisor inferior sutil pra ancorar visualmente os
+         blocos que vem abaixo. */
+      .sec-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-family: 'Nunito', sans-serif;
+        font-size: 0.74rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--gy-text);
+        margin: 1.4rem 0 0.85rem;
+        padding-bottom: 0.4rem;
+        border-bottom: 1px solid var(--gy-border-soft);
+      }
+      .sec-title::before {
+        content: '';
+        width: 4px;
+        height: 14px;
+        border-radius: 2px;
+        background: linear-gradient(180deg, var(--gy-green), var(--gy-green-dark));
+      }
+      :root[data-theme='dark'] .sec-title::before {
+        background: linear-gradient(180deg, #A4D330, var(--gy-green));
+      }
+      .sec-title:first-of-type { margin-top: 0.25rem; }
+
+      /* ========== Dropzone ========== */
+      /* Estado "idle" (vazio/uploading): dashed light + inviting.
+         Demais estados: dark card com brand glow verde/amarelo/vermelho. */
+      .dropzone {
         position: relative;
+        border-radius: 10px;
+        padding: 1.3rem 1.2rem;
+        min-height: 160px;
+        outline: none;
+        cursor: pointer;
+        transition: border-color 240ms ease, background-color 240ms ease;
+        overflow: hidden;
+      }
+      .dropzone.is-idle,
+      .dropzone.is-uploading {
         border: 2px dashed var(--gy-border);
         background: var(--gy-surface-2);
-        border-radius: 12px;
-        padding: 1.25rem 1rem;
-        text-align: center;
-        cursor: pointer;
-        transition: border-color 300ms ease, background-color 300ms ease;
-        outline: none;
-        min-height: 132px;
         display: flex;
         align-items: center;
         justify-content: center;
+        text-align: center;
       }
-      .clear-btn {
+      .dropzone.is-idle:hover,
+      .dropzone.is-idle:focus-visible,
+      .dropzone.is-idle.is-dragging {
+        border-color: var(--gy-green);
+        background: var(--gy-green-50);
+      }
+      .dropzone.is-idle:focus-visible { box-shadow: var(--focus-ring); }
+
+      /* Dark card variant para estados informativos */
+      .dropzone.is-pending,
+      .dropzone.is-processing,
+      .dropzone.is-failed,
+      .dropzone.is-completed {
+        background: linear-gradient(160deg, #1A1F2A, #0B0F14);
+        color: #E5E7EB;
+        border: 1px solid #2D3442;
+        cursor: default;
+      }
+      .dropzone.is-pending::before,
+      .dropzone.is-processing::before,
+      .dropzone.is-failed::before,
+      .dropzone.is-completed::before {
+        content: '';
+        position: absolute;
+        top: -40px; right: -40px;
+        width: 140px; height: 140px;
+        border-radius: 50%;
+        pointer-events: none;
+      }
+      .dropzone.is-pending::before,
+      .dropzone.is-completed::before {
+        background: radial-gradient(circle, rgba(164, 211, 48, 0.3), transparent 60%);
+      }
+      .dropzone.is-processing::before {
+        background: radial-gradient(circle, rgba(252, 204, 29, 0.3), transparent 60%);
+      }
+      .dropzone.is-failed::before {
+        background: radial-gradient(circle, rgba(239, 68, 68, 0.3), transparent 60%);
+      }
+
+      .dz-body { position: relative; }
+      .dz-center {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .dz-center .dz-ico-plain {
+        font-size: 2.2rem;
+        color: var(--gy-green-dark);
+        margin-bottom: 0.5rem;
+      }
+      :root[data-theme='dark'] .dz-center .dz-ico-plain {
+        color: var(--gy-green);
+      }
+      .dropzone.is-idle strong,
+      .dropzone.is-uploading strong {
+        font-family: 'Nunito', sans-serif;
+        font-size: 0.98rem;
+        color: var(--gy-text);
+      }
+      .dropzone.is-idle small {
+        font-size: 0.78rem;
+        color: var(--gy-text-soft);
+      }
+
+      /* Head row para estados dark */
+      .dz-head {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        margin-bottom: 0.5rem;
+      }
+      .dz-ico {
+        width: 28px; height: 28px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 0.85rem;
+        font-weight: 900;
+        flex: 0 0 28px;
+      }
+      .dz-ico.ico-ok {
+        background: linear-gradient(135deg, #A4D330, var(--gy-green));
+        color: #0B1F05;
+        box-shadow: 0 4px 10px rgba(164, 211, 48, 0.35);
+      }
+      .dz-ico.ico-processing {
+        background: linear-gradient(135deg, #FCCC1D, #E0AB00);
+        color: #3F2F00;
+      }
+      .dz-ico.ico-failed {
+        background: #EF4444;
+        color: #fff;
+      }
+      .dz-ico.ico-info {
+        background: rgba(255, 255, 255, 0.1);
+        color: #E5E7EB;
+        border-radius: 6px;
+      }
+      .dz-head strong {
+        font-family: 'Nunito', sans-serif;
+        font-weight: 800;
+        font-size: 0.88rem;
+        color: #fff;
+      }
+
+      .dz-fname {
+        font-family: 'JetBrains Mono', 'Nunito Sans', monospace;
+        font-size: 0.78rem;
+        color: #E5E7EB;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+      }
+      .dz-meta {
+        font-family: 'JetBrains Mono', 'Nunito Sans', monospace;
+        font-size: 0.72rem;
+        color: #94A3B8;
+        display: flex;
+        gap: 0.35rem;
+        flex-wrap: wrap;
+      }
+      .dz-meta b { color: #A4D330; font-weight: 600; }
+      .dz-meta .muted { color: #6b7280; }
+
+      .dz-err {
+        font-size: 0.76rem;
+        color: #FCA5A5;
+        margin-top: 0.15rem;
+      }
+
+      .dz-bar {
+        height: 4px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        margin-top: 0.65rem;
+        overflow: hidden;
+        position: relative;
+      }
+      .dz-bar-indeterminate {
+        position: absolute;
+        top: 0; left: 0;
+        height: 100%;
+        width: 35%;
+        background: linear-gradient(90deg, transparent 0%, #FCCC1D 50%, transparent 100%);
+        animation: dz-bar 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+      @keyframes dz-bar {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(380%); }
+      }
+
+      .dz-x {
         position: absolute;
         top: 0.5rem;
         right: 0.5rem;
         width: 26px;
         height: 26px;
-        border: none;
+        border: 0;
         border-radius: 6px;
-        background: transparent;
-        color: var(--gy-text-soft);
+        background: rgba(255, 255, 255, 0.06);
+        color: #94A3B8;
         display: grid;
         place-items: center;
         cursor: pointer;
         font-size: 0.78rem;
-        opacity: 0.55;
-        transition: background-color 140ms, color 140ms, opacity 140ms;
+        transition: background 140ms, color 140ms;
       }
-      .clear-btn:hover {
-        background: rgba(239, 68, 68, 0.1);
-        color: #ef4444;
-        opacity: 1;
+      .dz-x:hover {
+        background: rgba(239, 68, 68, 0.2);
+        color: #FCA5A5;
       }
-      :root[data-theme='dark'] .clear-btn:hover {
-        background: rgba(239, 68, 68, 0.18);
-        color: #fca5a5;
-      }
-      .clear-btn:focus-visible {
-        outline: none;
-        box-shadow: var(--focus-ring);
-        opacity: 1;
-      }
-      .drop-zone:hover,
-      .drop-zone:focus-visible,
-      .drop-zone.is-dragging {
-        border-color: var(--gy-green);
-        background: var(--gy-green-50);
-      }
-      .drop-zone:focus-visible {
-        box-shadow: var(--focus-ring);
-      }
-      .drop-zone.has-file {
-        border-style: solid;
-        border-color: var(--gy-green);
-        background: var(--gy-green-50);
-      }
-      /* Processando: fundo + borda amarelos da marca */
-      .drop-zone.is-processing {
-        border-style: solid;
-        border-color: var(--gy-yellow);
-        background: var(--gy-yellow-50);
-      }
-      /* Erro: fundo + borda vermelhos de atencao */
-      .drop-zone.is-failed {
-        border-style: solid;
-        border-color: #ef4444;
-        background: #fef2f2;
-      }
-      :root[data-theme='dark'] .drop-zone.is-failed {
-        background: #3a1414;
-      }
-      /* Preview: o drop-zone vira um cartao de confirmacao, sem
-         hover/cursor (o user confirma pelos botoes, nao clicando fora). */
-      .drop-zone.is-pending {
-        cursor: default;
-        border-style: solid;
-        border-color: var(--gy-green);
-        background: var(--gy-surface);
-        padding: 1rem;
-        text-align: left;
-        display: block;
-        min-height: 0;
-      }
-      .drop-zone.is-pending:hover,
-      .drop-zone.is-pending:focus-visible {
-        border-color: var(--gy-green);
-        background: var(--gy-surface);
-        box-shadow: none;
-      }
-      .preview-head {
-        display: flex; align-items: center; gap: 0.45rem;
-        margin-bottom: 0.75rem;
-      }
-      .preview-head i { color: var(--gy-green-dark); font-size: 1rem; }
-      :root[data-theme='dark'] .preview-head i { color: var(--gy-green); }
-      .preview-head strong {
-        font-family: 'Nunito', sans-serif;
-        font-size: 0.92rem;
-        color: var(--gy-text);
-      }
-      .preview-grid {
+
+      /* Preview grid (file · metricId · range) */
+      .dz-grid {
         display: grid;
         grid-template-columns: auto 1fr;
-        column-gap: 0.75rem;
-        row-gap: 0.4rem;
-        margin: 0 0 0.9rem;
+        column-gap: 0.65rem;
+        row-gap: 0.35rem;
+        margin: 0 0 0.75rem;
+        font-size: 0.78rem;
       }
-      .preview-grid dt {
-        font-size: 0.7rem;
+      .dz-grid dt {
+        font-size: 0.64rem;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--gy-text-soft);
+        letter-spacing: 0.06em;
+        color: #94A3B8;
         font-weight: 700;
         padding-top: 0.15rem;
       }
-      .preview-grid dd {
+      .dz-grid dd {
         margin: 0;
-        font-size: 0.85rem;
-        color: var(--gy-text);
-        display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+        color: #E5E7EB;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        min-width: 0;
       }
-      .preview-grid .fname {
-        font-weight: 600;
-        word-break: break-all;
-      }
-      .preview-grid .fsize {
-        font-size: 0.75rem;
-        color: var(--gy-text-soft);
-        font-variant-numeric: tabular-nums;
-      }
-      .preview-grid .pill {
+      .dz-grid dd .pill {
         display: inline-block;
-        padding: 0.15rem 0.55rem;
+        padding: 0.1rem 0.5rem;
         border-radius: 999px;
-        background: var(--gy-green-50);
-        color: var(--gy-green-dark);
-        font-size: 0.78rem;
+        background: rgba(164, 211, 48, 0.15);
+        color: #A4D330;
+        font-size: 0.72rem;
         font-weight: 800;
         font-variant-numeric: tabular-nums;
       }
-      :root[data-theme='dark'] .preview-grid .pill { color: var(--gy-green); }
-      .preview-grid .muted {
-        color: var(--gy-text-soft);
-        font-style: italic;
-        font-size: 0.82rem;
+      .dz-grid dd .muted {
+        color: #94A3B8;
+        font-size: 0.74rem;
       }
-      .preview-actions {
-        display: flex; gap: 0.5rem; justify-content: flex-end;
-      }
-      .preview-actions .btn {
-        display: inline-flex; align-items: center; gap: 0.35rem;
-        padding: 0.45rem 0.9rem;
-        border-radius: 8px;
-        font: inherit;
-        font-weight: 700;
-        font-size: 0.82rem;
-        cursor: pointer;
-        transition: background 140ms, border-color 140ms, color 140ms;
-      }
-      .preview-actions .btn.ghost {
-        background: transparent;
-        border: 1px solid var(--gy-border);
-        color: var(--gy-text-soft);
-      }
-      .preview-actions .btn.ghost:hover {
-        background: var(--gy-surface-2);
-        color: var(--gy-text);
-      }
-      .preview-actions .btn.primary {
-        background: var(--gy-green-dark);
-        border: 1px solid var(--gy-green-dark);
-        color: #fff;
-      }
-      :root[data-theme='dark'] .preview-actions .btn.primary {
-        background: var(--gy-green);
-        border-color: var(--gy-green);
-        color: var(--gy-bg);
-      }
-      .preview-actions .btn.primary:hover { transform: translateY(-1px); }
 
-      /* Presets de data: chips discretos acima dos campos De/Até */
+      .truncate {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .dz-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.4rem;
+      }
+      .dz-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.4rem 0.75rem;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 0.78rem;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: background 140ms, color 140ms, transform 120ms;
+      }
+      .dz-btn.ghost {
+        background: transparent;
+        color: #94A3B8;
+        border-color: rgba(255, 255, 255, 0.12);
+      }
+      .dz-btn.ghost:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+      .dz-btn.primary {
+        background: linear-gradient(135deg, #A4D330, var(--gy-green));
+        color: #0B1F05;
+      }
+      .dz-btn.primary:hover { transform: translateY(-1px); }
+
+      /* ========== Form fields ========== */
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        margin-bottom: 0.75rem;
+      }
+      .field label {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--gy-text-soft);
+        font-weight: 700;
+      }
+      .field-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+      }
+
       .presets {
         display: flex;
         flex-wrap: wrap;
         gap: 0.3rem;
-        margin: 0 0 0.75rem;
+        margin: 0 0 0.9rem;
       }
       .preset-chip {
         background: var(--gy-surface-2);
@@ -504,7 +642,7 @@ const PRESETS: Preset[] = [
         padding: 0.3rem 0.7rem;
         border-radius: 999px;
         font: inherit;
-        font-size: 0.75rem;
+        font-size: 0.73rem;
         font-weight: 700;
         cursor: pointer;
         transition: background 140ms, border-color 140ms, color 140ms;
@@ -515,102 +653,23 @@ const PRESETS: Preset[] = [
         color: var(--gy-green-dark);
       }
       :root[data-theme='dark'] .preset-chip:hover { color: var(--gy-green); }
-      .drop-content {
-        display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
-      }
-      .drop-content i {
-        font-size: 1.75rem;
-        color: var(--gy-green-dark);
-        margin-bottom: 0.35rem;
-      }
-      :root[data-theme='dark'] .drop-content i { color: var(--gy-green); }
-      .drop-content strong {
-        font-family: 'Nunito', sans-serif;
-        font-size: 0.95rem;
-        color: var(--gy-text);
-      }
-      .drop-content small {
-        font-size: 0.78rem;
-        color: var(--gy-text-soft);
-      }
-      .drop-content.success strong { color: var(--gy-green-dark); }
-      :root[data-theme='dark'] .drop-content.success strong { color: var(--gy-green); }
-
-      /* Estado processing: texto/icone amber p/ combinar com bg amarelo */
-      .drop-content.processing strong { color: #92400e; }
-      .drop-content.processing i {
-        color: #d97706;
-        animation-duration: 1.8s;
-      }
-      :root[data-theme='dark'] .drop-content.processing strong { color: #fcd34d; }
-      :root[data-theme='dark'] .drop-content.processing i { color: var(--gy-yellow); }
-
-      .progress-track {
-        position: relative;
-        width: 100%;
-        max-width: 220px;
-        height: 3px;
-        background: rgba(217, 119, 6, 0.2);
-        border-radius: 999px;
-        overflow: hidden;
-        margin-top: 0.5rem;
-      }
-      .progress-bar-indeterminate {
-        position: absolute;
-        top: 0;
-        left: 0;
-        height: 100%;
-        width: 35%;
-        background: linear-gradient(
-          90deg,
-          transparent 0%,
-          #d97706 50%,
-          transparent 100%
-        );
-        animation: gy-drop-bar 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-      }
-      :root[data-theme='dark'] .progress-bar-indeterminate {
-        background: linear-gradient(
-          90deg,
-          transparent 0%,
-          var(--gy-yellow) 50%,
-          transparent 100%
-        );
-      }
-      @keyframes gy-drop-bar {
-        0%   { transform: translateX(-100%); }
-        100% { transform: translateX(380%); }
-      }
-
-      /* Estado failed: texto/icone vermelhos p/ combinar com bg */
-      .drop-content.failed strong { color: #991b1b; }
-      .drop-content.failed i { color: #dc2626; }
-      :root[data-theme='dark'] .drop-content.failed strong { color: #fca5a5; }
-      :root[data-theme='dark'] .drop-content.failed i { color: #f87171; }
-
-      .divider { height: 1px; background: var(--gy-border); margin: 1.25rem 0; }
-
-      .field { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.9rem; }
-      .field label {
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--gy-text-soft);
-        font-weight: 700;
-      }
-      .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
 
       .actions {
-        display: flex; flex-direction: column; gap: 0.5rem;
-        margin-top: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-top: 0.85rem;
       }
       .hint-missing-upload {
-        display: inline-flex; align-items: center; gap: 0.4rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
         margin-top: 0.35rem;
         font-size: 0.78rem;
         color: var(--gy-text-soft);
       }
       .hint-missing-upload i { color: var(--gy-green); }
+
       :host ::ng-deep .w-full { width: 100%; }
       :host ::ng-deep .w-full .p-button { width: 100%; justify-content: center; }
       :host ::ng-deep .p-inputnumber { width: 100%; }
@@ -619,12 +678,29 @@ const PRESETS: Preset[] = [
       :host ::ng-deep .p-calendar input { width: 100%; }
       :host ::ng-deep .p-selectbutton { display: flex; }
       :host ::ng-deep .p-selectbutton .p-button { flex: 1; justify-content: center; }
+
+      /* Consultar: lime gradient (primary chamativo da marca) */
+      :host ::ng-deep .gy-btn-primary .p-button {
+        background: linear-gradient(135deg, #A4D330 0%, var(--gy-green) 55%, var(--gy-green-dark) 100%);
+        border-color: var(--gy-green-dark);
+        color: #0B1F05;
+        font-weight: 800;
+        padding: 0.9rem 1.1rem;
+      }
+      :host ::ng-deep .gy-btn-primary .p-button:hover:not(:disabled) {
+        box-shadow: 0 8px 20px rgba(135, 188, 37, 0.28);
+      }
+      :host ::ng-deep .gy-btn-out .p-button {
+        padding: 0.85rem 1.1rem;
+        font-weight: 800;
+      }
     `,
   ],
 })
 export class FiltersPanelComponent {
   readonly store = inject(MetricsStore);
   readonly i18n = inject(I18nService);
+  readonly chartExport = inject(ChartExportService);
   readonly isDragging = signal(false);
   readonly presets = PRESETS;
 
@@ -648,6 +724,29 @@ export class FiltersPanelComponent {
   readonly isFailed = computed(
     () => this.store.uploadStatus()?.state === 'failed',
   );
+  readonly isCompleted = computed(() => {
+    if (!this.store.lastUpload()) return false;
+    if (this.isProcessing()) return false;
+    if (this.isFailed()) return false;
+    return true;
+  });
+  /**
+   * Estado "idle" do dropzone: sem preview, sem upload em andamento,
+   * sem arquivo enviado. UI mostra o visual leve (dashed, inviting).
+   */
+  readonly isIdle = computed(
+    () =>
+      !this.store.pendingCsv() &&
+      !this.store.uploading() &&
+      !this.store.lastUpload(),
+  );
+
+  /**
+   * "Baixar PNGs" so' faz sentido em view=chart com dado presente.
+   * chartExport.hasCharts reflete se o ResultsPanel registrou sua
+   * funcao de export (viewMode === 'chart' && data.length > 0).
+   */
+  readonly showExportPngs = computed(() => this.chartExport.hasCharts());
 
   onDragOver(event: DragEvent): void {
     event.preventDefault();
@@ -661,29 +760,24 @@ export class FiltersPanelComponent {
     event.preventDefault();
     this.isDragging.set(false);
     const file = event.dataTransfer?.files?.[0];
-    if (file) this.store.acceptCsvFile(file);
+    if (file) void this.store.acceptCsvFile(file);
   }
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
-    if (file) this.store.acceptCsvFile(file);
+    if (file) void this.store.acceptCsvFile(file);
     input.value = '';
   }
 
   onClear(event: MouseEvent): void {
-    event.stopPropagation(); // nao abre o file picker
+    event.stopPropagation();
     this.store.clearUpload();
   }
 
-  /**
-   * Clique/teclas no drop-zone so' abrem o file picker quando nao ha
-   * preview ativa. Em modo preview, o user interage com os botoes
-   * "Enviar / Cancelar" — clicar no vazio seria ambiguo.
-   */
   onDropZoneClick(event: MouseEvent, input: HTMLInputElement): void {
     if (this.store.pendingCsv()) return;
-    // Ignora clicks vindos dos botoes do Cancelar/Remover que borbulharam
-    if ((event.target as HTMLElement).closest('.clear-btn, .btn')) return;
+    if ((event.target as HTMLElement).closest('.dz-x, .dz-btn')) return;
+    if (!this.isIdle() && !this.isFailed()) return;
     input.click();
   }
   onDropZoneKey(event: Event, input: HTMLInputElement): void {
@@ -701,12 +795,6 @@ export class FiltersPanelComponent {
     this.store.cancelPendingUpload();
   }
 
-  /**
-   * Calcula o range do preset escolhido e popula os signals de data
-   * na store. `new Date()` no momento do click garante que "hoje" é
-   * recalculado a cada uso — não fica grudado na hora em que o
-   * componente foi criado.
-   */
   applyPreset(id: PresetId): void {
     const today = startOfDay(new Date());
     let start: Date;
@@ -715,7 +803,7 @@ export class FiltersPanelComponent {
       case 'last7': {
         end = today;
         start = new Date(today);
-        start.setDate(start.getDate() - 6); // incluindo hoje = 7 dias
+        start.setDate(start.getDate() - 6);
         break;
       }
       case 'last30': {
@@ -739,7 +827,6 @@ export class FiltersPanelComponent {
     this.store.finalDate.set(end);
   }
 
-  // Expostos como propriedades pra serem chamados direto no template.
   readonly formatBytes = formatBytes;
   readonly formatDate = formatDate;
   readonly formatNumber = formatNumber;

@@ -53,12 +53,14 @@
   --gy-yellow:      #FCCC1D;
   --gy-yellow-50:   #2E2410;
 
-  /* Superficies (dark — slate-neutral com toque quente) */
-  --gy-bg:          #0F1419;
-  --gy-surface:     #1A1F2A;
-  --gy-surface-2:   #242A37;
-  --gy-border:      #2D3442;
-  --gy-border-soft: #252B38;
+  /* Superficies dark — tudo puxado pro quase-preto. O backdrop (--gy-bg)
+     e' praticamente #000; os painéis sobem apenas o suficiente pra
+     serem distinguidos por borda, nao por luminancia. */
+  --gy-bg:          #020305;
+  --gy-surface:     #0B0F15;
+  --gy-surface-2:   #12171F;
+  --gy-border:      #1A2030;
+  --gy-border-soft: #141823;
   --gy-text:        #E5E7EB;
   --gy-text-soft:   #94A3B8;
   --gy-shadow:      0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
@@ -92,6 +94,91 @@ html, body {
   color: var(--gy-text);
   min-height: 100vh;
   transition: background-color 200ms ease, color 200ms ease;
+}
+
+/* Nuclear: garante que NADA exiba "fundo padrao" no dark. Regra
+   global fora da view encapsulation do Angular — o seletor
+   `:host-context` dentro do AppComponent gerava output correto em
+   specificity mas algum componente mais alto estava vencendo. Aqui
+   via global stylesheet nao ha encapsulation. */
+:root[data-theme='dark'],
+:root[data-theme='dark'] body,
+:root[data-theme='dark'] app-root,
+:root[data-theme='dark'] app-root .frame {
+  background-color: var(--gy-bg) !important;
+  background-image: none !important;
+}
+
+/* ============================================================
+   Overrides dark mode pra componentes do PrimeNG lara-light-blue.
+   O tema base e' UM ARQUIVO SO' (light) — todos os backgrounds
+   brancos hardcoded (#ffffff, #f9fafb, #f3f4f6) precisam ser
+   sobrescritos manualmente em dark. Sem isso, tabela/inputs/
+   calendar aparecem com fundo claro "vazando" no dark e a
+   sensacao e' de cinza claro atras dos containers.
+   ============================================================ */
+:root[data-theme='dark'] {
+  /* Inputs */
+  .p-inputtext,
+  .p-inputnumber-input,
+  .p-inputtext.p-variant-filled,
+  .p-inputtext.p-variant-filled:enabled:hover,
+  .p-inputtext.p-variant-filled:enabled:focus {
+    background: var(--gy-surface);
+    background-color: var(--gy-surface);
+    color: var(--gy-text);
+    border-color: var(--gy-border);
+  }
+
+  /* DataTable */
+  .p-datatable {
+    background: transparent;
+  }
+  .p-datatable .p-datatable-header,
+  .p-datatable .p-datatable-footer {
+    background: var(--gy-surface-2);
+    color: var(--gy-text);
+    border-color: var(--gy-border);
+  }
+  .p-datatable .p-datatable-tbody > tr,
+  .p-datatable .p-datatable-tbody > tr > td {
+    background: var(--gy-surface);
+    color: var(--gy-text);
+    border-color: var(--gy-border-soft);
+  }
+  .p-datatable.p-datatable-striped .p-datatable-tbody > tr:nth-child(even),
+  .p-datatable.p-datatable-striped .p-datatable-tbody > tr:nth-child(even) > td {
+    background: var(--gy-surface-2);
+  }
+  .p-datatable.p-datatable-hoverable-rows .p-datatable-tbody > tr:not(.p-highlight):hover,
+  .p-datatable.p-datatable-hoverable-rows .p-datatable-tbody > tr:not(.p-highlight):hover > td {
+    background: var(--gy-green-50);
+  }
+
+  /* Paginator */
+  .p-paginator {
+    background: transparent;
+    color: var(--gy-text-soft);
+  }
+
+  /* Calendar (overlay que abre o date picker) */
+  .p-datepicker {
+    background: var(--gy-surface);
+    color: var(--gy-text);
+    border-color: var(--gy-border);
+  }
+  .p-datepicker table td > span {
+    color: var(--gy-text);
+  }
+  .p-datepicker table td > span.p-highlight {
+    background: var(--gy-green-50);
+    color: var(--gy-green);
+  }
+
+  /* Button outlined (pra nao aparecer fundo branco no hover) */
+  .p-button.p-button-outlined:enabled:hover {
+    background: rgba(164, 211, 48, 0.08);
+  }
 }
 body {
   display: flex;
@@ -274,18 +361,25 @@ h1, h2, h3, h4, h5, h6 {
   100% { background-position: -200% 0; }
 }
 
-/* Tabela gy: flex column pra empurrar paginador ao fundo do panel +
-   barra verde fluindo no topo durante loading + stagger fade-in das rows */
+/* Tabela gy: flex column pra barra de loading no topo + fade-in das rows.
+   IMPORTANT: flex:1 + overflow:hidden so' fazem sentido quando a tabela
+   vive num container com height definido (layout antigo tinha .panel
+   height:100%). No layout novo (ResultsPanel com .chart-card), o pai
+   nao tem height fixo, entao esse combo colapsava o wrapper e cortava
+   as rows. Default agora e' size-to-content; quem precisar do comportamento
+   antigo aplica a classe .gy-table-fill. */
 .gy-table {
   position: relative;
   border-radius: 10px;
   overflow: hidden;
+}
+.gy-table-fill {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
 }
-.gy-table .p-datatable-wrapper {
+.gy-table-fill .p-datatable-wrapper {
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -383,13 +477,23 @@ h1, h2, h3, h4, h5, h6 {
 :root[data-theme='dark'] .p-paginator .p-paginator-page:not(.p-highlight):hover {
   color: var(--gy-green);
 }
-.p-paginator .p-paginator-page.p-highlight {
+.p-paginator .p-paginator-page.p-highlight,
+.p-paginator .p-paginator-page.p-highlight:hover,
+.p-paginator .p-paginator-page.p-highlight:focus {
   background: var(--gy-green-dark);
   color: #fff;
+  cursor: default;
 }
-:root[data-theme='dark'] .p-paginator .p-paginator-page.p-highlight {
+:root[data-theme='dark'] .p-paginator .p-paginator-page.p-highlight,
+:root[data-theme='dark'] .p-paginator .p-paginator-page.p-highlight:hover,
+:root[data-theme='dark'] .p-paginator .p-paginator-page.p-highlight:focus {
   background: var(--gy-green);
   color: var(--gy-bg);
+}
+/* Remove efeito de hover/ripple que o PrimeNG aplica na página ativa —
+   ela já está destacada, hover nela vira ruído visual. */
+.p-paginator .p-paginator-page.p-highlight .p-ink {
+  display: none;
 }
 .p-paginator .p-disabled {
   opacity: 0.35;

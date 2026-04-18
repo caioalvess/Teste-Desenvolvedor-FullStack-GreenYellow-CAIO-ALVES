@@ -140,6 +140,162 @@ describe('MetricsStore', () => {
     });
   });
 
+  describe('histogram', () => {
+    it('null quando data() esta vazio', () => {
+      expect(store.histogram()).toBeNull();
+    });
+
+    it('colapsa pra uma unica faixa quando todos os valores sao iguais (evita divisao por zero)', () => {
+      store.data.set([
+        { date: '2024-01-01', value: 5 },
+        { date: '2024-01-02', value: 5 },
+        { date: '2024-01-03', value: 5 },
+      ]);
+      const h = store.histogram()!;
+      expect(h.labels).toEqual(['5']);
+      expect(h.counts).toEqual([3]);
+    });
+
+    it('distribui em 8 faixas quando ha variacao', () => {
+      // 16 valores uniformes de 0 a 7
+      store.data.set(
+        Array.from({ length: 16 }, (_, i) => ({
+          date: `2024-01-${String(i + 1).padStart(2, '0')}`,
+          value: i % 8,
+        })),
+      );
+      const h = store.histogram()!;
+      expect(h.labels).toHaveLength(8);
+      expect(h.counts).toHaveLength(8);
+      // soma das contagens = total de pontos
+      expect(h.counts.reduce((a, b) => a + b, 0)).toBe(16);
+    });
+
+    it('valores no limite superior caem na ultima faixa (evita overflow)', () => {
+      store.data.set([
+        { date: '2024-01-01', value: 0 },
+        { date: '2024-01-02', value: 100 }, // max: sem o clamp, cairia no bin 8 (inexistente)
+      ]);
+      const h = store.histogram()!;
+      expect(h.labels).toHaveLength(8);
+      expect(h.counts[7]).toBe(1); // o 100 caiu no ultimo bin
+      expect(h.counts[0]).toBe(1);
+    });
+  });
+
+  describe('weekdayMeans', () => {
+    it('null quando granularity nao e DAY (so faz sentido em serie diaria)', () => {
+      store.granularity.set('MONTH');
+      store.data.set([{ date: '2024-01-01', value: 10 }]);
+      expect(store.weekdayMeans()).toBeNull();
+    });
+
+    it('null quando data() esta vazio', () => {
+      store.granularity.set('DAY');
+      expect(store.weekdayMeans()).toBeNull();
+    });
+
+    it('calcula media por dia-da-semana (0=dom..6=sab)', () => {
+      store.granularity.set('DAY');
+      // 2024-01-01 e' uma segunda (dow=1)
+      store.data.set([
+        { date: '2024-01-01', value: 100 }, // seg
+        { date: '2024-01-02', value: 200 }, // ter
+        { date: '2024-01-08', value: 200 }, // seg (media de seg = 150)
+        { date: '2024-01-06', value: 50 },  // sab
+      ]);
+      const means = store.weekdayMeans()!;
+      expect(means).toHaveLength(7);
+      expect(means[0]).toBe(0);   // dom — sem dados
+      expect(means[1]).toBe(150); // seg — (100+200)/2
+      expect(means[2]).toBe(200); // ter
+      expect(means[6]).toBe(50);  // sab
+    });
+
+    it('arredonda media pra inteiro (valor nao e float)', () => {
+      store.granularity.set('DAY');
+      store.data.set([
+        { date: '2024-01-01', value: 100 }, // seg
+        { date: '2024-01-08', value: 103 }, // seg
+      ]);
+      // (100+103)/2 = 101.5 -> 102 (round)
+      expect(store.weekdayMeans()![1]).toBe(102);
+    });
+  });
+
+  describe('isStale', () => {
+    // Nao usa metric 999 aqui: 999 tem comportamento especial (limpa
+    // arquivo na consulta) que mascararia a deteccao de stale.
+    const fillAndConsultar = () => {
+      store.metricId.set(100);
+      store.dateInitial.set(new Date(2024, 0, 1));
+      store.finalDate.set(new Date(2024, 0, 31));
+      store.granularity.set('DAY');
+      store.lastUpload.set({
+        originalName: 'a.csv', size: 1, uploadedAt: '',
+      });
+      store.uploadStatus.set(status('completed', 1));
+      api.aggregate.mockReturnValue(of([{ date: '2024-01-01', value: 1 }]));
+      store.consultar();
+    };
+
+    it('false antes da primeira consulta', () => {
+      expect(store.isStale()).toBe(false);
+    });
+
+    it('false logo apos consulta (snapshot == estado atual)', () => {
+      fillAndConsultar();
+      expect(store.isStale()).toBe(false);
+    });
+
+    it('true quando o arquivo muda apos a consulta', () => {
+      fillAndConsultar();
+      store.lastUpload.set({
+        originalName: 'b.csv', size: 1, uploadedAt: '',
+      });
+      expect(store.isStale()).toBe(true);
+    });
+
+    it('true quando o arquivo e removido apos a consulta', () => {
+      fillAndConsultar();
+      store.lastUpload.set(null);
+      expect(store.isStale()).toBe(true);
+    });
+
+    it('true quando o user mexe na data', () => {
+      fillAndConsultar();
+      store.finalDate.set(new Date(2024, 1, 15));
+      expect(store.isStale()).toBe(true);
+    });
+
+    it('true quando o user troca a granularidade', () => {
+      fillAndConsultar();
+      store.granularity.set('MONTH');
+      expect(store.isStale()).toBe(true);
+    });
+
+    it('true quando o user limpa uma data (form invalido)', () => {
+      fillAndConsultar();
+      store.dateInitial.set(null);
+      expect(store.isStale()).toBe(true);
+    });
+
+    it('false enquanto carregando (o banner nao pisca durante o fetch)', () => {
+      fillAndConsultar();
+      store.loading.set(true);
+      expect(store.isStale()).toBe(false);
+    });
+
+    it('volta pra false apos refazer a consulta', () => {
+      fillAndConsultar();
+      store.granularity.set('MONTH'); // stale
+      expect(store.isStale()).toBe(true);
+      api.aggregate.mockReturnValue(of([{ date: '2024-01-01', value: 1 }]));
+      store.consultar();
+      expect(store.isStale()).toBe(false);
+    });
+  });
+
   // ------------------------------------------------------------------
   // acceptCsvFile
   // ------------------------------------------------------------------
@@ -411,6 +567,52 @@ describe('MetricsStore', () => {
       expect(store.data()).toEqual(rows);
       expect(store.loading()).toBe(false);
       expect(store.searched()).toBe(true);
+    });
+
+    it('metricId=999: remove pendingCsv antes de consultar (demo nao depende de arquivo)', () => {
+      fillForm();
+      store.metricId.set(999);
+      store.pendingCsv.set({
+        file: new File(['x'], 'x.csv'),
+        meta: { metricId: null, firstDate: null, lastDate: null },
+      });
+      api.aggregate.mockReturnValue(of([]));
+
+      store.consultar();
+
+      expect(store.pendingCsv()).toBeNull();
+      expect(api.aggregate).toHaveBeenCalled();
+    });
+
+    it('metricId=999: remove lastUpload antes de consultar', () => {
+      fillForm();
+      store.metricId.set(999);
+      store.lastUpload.set({
+        originalName: 'old.csv', size: 1, uploadedAt: '',
+      });
+      store.uploadStatus.set(status('completed', 10));
+      api.aggregate.mockReturnValue(of([]));
+
+      store.consultar();
+
+      expect(store.lastUpload()).toBeNull();
+      expect(store.uploadStatus()).toBeNull();
+      expect(api.aggregate).toHaveBeenCalled();
+    });
+
+    it('metricId != 999: NAO mexe no arquivo (mantem o upload ativo)', () => {
+      fillForm();
+      store.metricId.set(100);
+      store.lastUpload.set({
+        originalName: 'keep.csv', size: 1, uploadedAt: '',
+      });
+      store.uploadStatus.set(status('completed', 10));
+      api.aggregate.mockReturnValue(of([]));
+
+      store.consultar();
+
+      expect(store.lastUpload()?.originalName).toBe('keep.csv');
+      expect(store.uploadStatus()?.state).toBe('completed');
     });
 
     it('erro: mantem loading=false e toca error com mensagem extraida', () => {

@@ -1,26 +1,27 @@
 # GreenYellow — Teste Full Stack
 
-Teste técnico pra vaga de Full Stack. O objetivo é receber um CSV de leituras de métricas, processar em background, guardar no banco e expor endpoints de consulta (agregação por dia/mês/ano) e relatório Excel. Do lado do front, uma tela simples pra subir o arquivo, consultar e baixar o relatório.
+Teste técnico para vaga de Full Stack. O objetivo é receber um CSV de leituras de métricas, processar em background, armazenar no banco e expor endpoints de consulta (agregação por dia/mês/ano) e de relatório Excel. No front, uma interface para enviar o arquivo, consultar e baixar o relatório — com gráficos, KPIs, tabela paginada, dark mode e internacionalização.
 
 ## 🌐 Rodando em produção
 
-Tem um deploy no Azure funcionando:
+Existe um deploy no Azure Container Apps em funcionamento:
 
 - **Frontend:** https://gy-frontend.victoriousriver-e45d55dc.brazilsouth.azurecontainerapps.io
 - **API (health):** https://gy-api.victoriousriver-e45d55dc.brazilsouth.azurecontainerapps.io/health
+- **Swagger:** https://gy-api.victoriousriver-e45d55dc.brazilsouth.azurecontainerapps.io/api
 
-Pra testar paginação sem precisar subir arquivo, já tem um dataset sintético pré-populado no banco. Na tela do front, use:
+Para testar a paginação sem precisar enviar um arquivo, há um dataset sintético pré-populado no banco. Na tela do front, utilize:
 
 - **MetricId:** `999`
 - **Data inicial:** `01-01-2024`
 - **Data final:** `01-03-2024`
 - **Granularidade:** `Dia`
 
-São 60 pontos em 5 páginas. Esse seed (`db/seed-demo.sql`) gera 1440 leituras sintéticas pra métrica 999 cobrindo Jan-Fev/2024 — serviu muito pra testar manualmente cenários de tabela cheia que o `arquivo-modelo.csv` do enunciado (só 2 dias de dados pra cada métrica) não cobre. Deixei como exceção no front: quando o MetricId é 999, o botão Consultar libera sem exigir upload.
+São 60 pontos em 5 páginas. O seed (`db/seed-demo.sql`) gera 1440 leituras sintéticas para a métrica 999 cobrindo Jan-Fev/2024 — útil para testar manualmente cenários de tabela cheia que o `arquivo-modelo.csv` do enunciado (apenas dois dias de dados por métrica) não cobre. A métrica 999 é tratada como exceção no front: o botão Consultar fica liberado sem exigir upload, e, se houver arquivo em pré-visualização ou já enviado, ele é descartado antes da consulta (os resultados vêm do seed, não do arquivo).
 
-## Como rodar local
+## Como rodar localmente
 
-**Pré-requisitos:** Docker e Docker Compose (v2+). Só isso.
+**Pré-requisitos:** Docker e Docker Compose (v2+).
 
 ```bash
 git clone git@github.com:caioalvess/greenyellow-fullstack-test.git
@@ -29,20 +30,22 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Na primeira vez demora ~1 min fazendo build das imagens. Depois sobe em segundos. Tudo pronto nesses endereços:
+Na primeira execução o build das imagens leva aproximadamente 1 minuto; nas seguintes, segundos. Os serviços ficam em:
 
 | Serviço | URL |
 |---------|-----|
 | Frontend | http://localhost:4200 |
 | API | http://localhost:3001 |
+| Swagger | http://localhost:3001/api |
 | RabbitMQ UI | http://localhost:15672 (login `gy_user` / senha `gy_password`) |
 
 ### Usar
 
-1. Abre o frontend.
-2. Arrasta (ou clica pra selecionar) o `arquivo-modelo.csv` que tá na raiz do repo.
-3. Os campos do formulário preenchem sozinhos com base no conteúdo do CSV.
-4. Clica **Consultar** pra ver a tabela agregada, ou **Baixar Excel** pro relatório completo.
+1. Abra o frontend.
+2. Arraste (ou clique para selecionar) o `arquivo-modelo.csv` presente na raiz do repositório.
+3. Uma pré-visualização aparece com metricId detectado, tamanho e intervalo de datas — clique em **Enviar** para confirmar o upload.
+4. Os campos do formulário são preenchidos automaticamente com base no conteúdo do CSV.
+5. Clique em **Consultar** para ver os resultados (gráfico ou tabela), ou em **Baixar Excel** para o relatório completo.
 
 ### (Opcional) Popular o banco com o dataset demo
 
@@ -50,26 +53,26 @@ Na primeira vez demora ~1 min fazendo build das imagens. Depois sobe em segundos
 docker exec -i gy-postgres psql -U gy_user -d gy_metrics < db/seed-demo.sql
 ```
 
-1440 linhas pra metric 999 (60 dias × 24h em Jan-Fev/2024). Idempotente — pode rodar várias vezes sem duplicar.
+Insere 1440 linhas para a métrica 999 (60 dias × 24h em Jan-Fev/2024). A operação é idempotente — pode ser executada várias vezes sem duplicar dados.
 
 ### Rodar os testes
 
 ```bash
 docker compose exec api npm test        # backend (25 testes)
-docker compose exec frontend npm test   # frontend (43 testes)
+docker compose exec frontend npm test   # frontend (88 testes)
 ```
 
-**68 testes no total.** Backend sobe um DB separado (`gy_metrics_test`) em 3 suítes (~10s); frontend usa Jest + jsdom em 5 suítes (~20s). Detalhes de cobertura na seção *Testes* abaixo.
+**113 testes no total.** O backend sobe um banco separado (`gy_metrics_test`) em 3 suítes (~10s); o frontend usa Jest + jsdom em 7 suítes (~25s). Detalhes de cobertura na seção *Testes* abaixo.
 
 ### Produção local
 
-Se quiser subir as imagens de produção (nginx servindo o front, backend compilado sem dev deps):
+Para executar as imagens de produção (nginx servindo o front estático, backend compilado sem dev deps):
 
 ```bash
 docker compose --profile prod up -d
 ```
 
-Frontend prod vai pra `http://localhost:8080`, API prod pra `http://localhost:3003`. O profile `prod` coexiste com o dev (portas diferentes) pra facilitar comparação.
+O frontend de produção responde em `http://localhost:8080` e a API em `http://localhost:3003`. O profile `prod` coexiste com o dev (portas diferentes) para facilitar comparação.
 
 ### Parar
 
@@ -80,13 +83,13 @@ docker compose down -v    # reseta tudo, inclusive banco
 
 ## Stack
 
-- **Backend:** NestJS 10, TypeScript, Node 20
-- **Banco:** PostgreSQL 16 — entidades via TypeORM, **queries em SQL puro** (como o enunciado pediu)
+- **Backend:** NestJS 10, TypeScript, Node 20, Swagger via `@nestjs/swagger`
+- **Banco:** PostgreSQL 16 — entidades mapeadas via TypeORM, **consultas em SQL puro** (conforme o enunciado solicitou)
 - **Fila:** RabbitMQ 3 via `amqplib` direto
-- **Storage:** Azurite em dev, Azure Blob Storage real em prod (mesma connection string, zero mudança de código)
-- **Frontend:** Angular 17 + PrimeNG 17 (fonte Nunito, tema custom com paleta da GreenYellow, dark mode, gráficos com **Chart.js**, **i18n** pt-BR/en/es/fr via signals)
-- **Testes:** Jest no back (unit + integração real + E2E com Supertest) e no front (jest-preset-angular + jsdom)
-- **Infra:** Docker Compose em dev; Azure Container Apps em prod
+- **Storage:** Azurite em dev, Azure Blob Storage em produção (mesma connection string, sem alteração no código)
+- **Frontend:** Angular 17 + PrimeNG 17, Chart.js 4, tema custom com paleta da GreenYellow, dark mode com override explícito dos componentes PrimeNG, i18n pt-BR/en/es/fr via signals
+- **Testes:** Jest no backend (unit + integração real + E2E com Supertest) e no frontend (jest-preset-angular + jsdom)
+- **Infra:** Docker Compose em dev; Azure Container Apps em produção
 
 ## Fluxo
 
@@ -122,31 +125,49 @@ docker compose down -v    # reseta tudo, inclusive banco
                               └──────────────┘
 ```
 
-Upload streama direto pro blob (a API nunca bufera o arquivo), publica uma mensagem com o nome do blob e responde `201` na hora. O consumer, em background, baixa o blob também como stream, parseia com `csv-parse` async e insere em batches de 1000 linhas usando `ON CONFLICT DO NOTHING` pra garantir idempotência. O front fica fazendo polling num endpoint de status (`GET /uploads/:blobName/status`) pra mostrar "processando… 45.000 linhas" em tempo real.
+O upload é encaminhado via stream direto para o blob (a API não bufferiza o arquivo), publica uma mensagem com o nome do blob e responde `201` imediatamente. O consumer, em background, baixa o blob também em stream, faz o parse com `csv-parse` assíncrono e insere em lotes de 1000 linhas usando `ON CONFLICT DO NOTHING` para garantir idempotência. O front faz polling em `GET /uploads/:blobName/status` para exibir "processando… 45.000 linhas" em tempo real.
+
+## Funcionalidades do frontend
+
+- **Upload com pré-visualização** — ao soltar/selecionar um CSV, uma prévia aparece com o metricId detectado, nome do arquivo, tamanho e intervalo de datas. O envio só ocorre após confirmação.
+- **Formulário de consulta** — metricId, intervalo de datas (com máscara `DD-MM-AAAA`), atalhos de período (Últimos 7 dias, Últimos 30 dias, Este mês, Este ano) e granularidade (Dia/Mês/Ano).
+- **Resultados em dois modos** — tabela paginada (default, com dia da semana em chip) ou gráfico. Alternável em tempo real.
+- **KPIs derivados** — Total (Σ, destaque em gradiente lime), Média (μ), Pico (▲, com data) e Mínimo (▼, com data). Computados client-side a partir do array devolvido pelo `/aggregate`.
+- **Gráficos complementares** — gráfico principal (linha + área), distribuição (histograma de 8 faixas) e média por dia da semana (exibida apenas quando a granularidade é Dia).
+- **Exportação de PNG** — individual por gráfico (botão com ícone) ou lote (botão "Baixar PNGs" na sidebar, visível apenas em modo gráfico).
+- **Banner de resultados desatualizados** — se o formulário ou o arquivo são alterados após uma consulta, um aviso sutil aparece no topo do painel com botão "Refazer consulta".
+- **Dark mode** — toggle no header do painel de resultados, com override explícito dos componentes PrimeNG (tabela, inputs, calendar, paginator) para evitar vazamento do tema claro.
+- **Internacionalização** — quatro idiomas (pt-BR, en, es, fr), selector no header, persistência em `localStorage`, `<html lang>` atualizado reativamente.
 
 ## Principais decisões
 
-**SQL puro nas queries, ORM só pra modelagem.** O enunciado pediu preferência por SQL puro; TypeORM cuida só do mapeamento da entidade. Todas as consultas (aggregate, report, insert em batch) usam `dataSource.query(sql, params)`.
+**SQL puro nas queries, ORM apenas para modelagem.** O enunciado pediu preferência por SQL puro; o TypeORM cuida apenas do mapeamento da entidade. Todas as consultas (aggregate, report, insert em batch) usam `dataSource.query(sql, params)`.
 
-**Tabela `metric_readings` crua**, sem pré-agregação. `UNIQUE (metric_id, date_time)` serve de dedupe e o índice composto é usado em todas as queries. O `EXPLAIN ANALYZE` confirma `Index Scan` sub-1ms pra range de um metric.
+**Tabela `metric_readings` crua**, sem pré-agregação. `UNIQUE (metric_id, date_time)` serve como dedupe e o índice composto é utilizado em todas as queries. O `EXPLAIN ANALYZE` confirma `Index Scan` em tempo sub-milissegundo para range de uma métrica.
 
-**Streaming ponta a ponta.** Upload, download e parse. Testei com um CSV sintético de 31MB / 1.2M linhas e o pico de RAM da API ficou em **+53 MiB** sobre o baseline — independente do tamanho do arquivo. Isso resolveu um ponto que um colega que fez o mesmo teste tinha me alertado (o CSV de exemplo é pequeno, mas se o examinador subir um grande, bufferizar tudo morre).
+**Streaming ponta a ponta.** Upload, download e parse. Testei com um CSV sintético de 31MB / 1.2M linhas e o pico de RAM da API ficou em **+53 MiB** sobre o baseline — independente do tamanho do arquivo. Isso resolveu um ponto que um colega que fez o mesmo teste havia alertado: o CSV de exemplo é pequeno, mas se o avaliador enviar um grande, buferizar tudo esgota a memória.
 
-**Idempotência por `ON CONFLICT DO NOTHING`.** Reupload ou reprocessamento não duplica. Testado.
+**Idempotência via `ON CONFLICT DO NOTHING`.** Reenvio ou reprocessamento não duplica linhas. Há testes explícitos para o cenário.
 
-**Relatório Excel com window functions (sem `GROUP BY`).** Esse foi o pulo do gato — explicado mais abaixo na seção "O que deu trabalho".
+**Relatório Excel com window functions (sem `GROUP BY`).** Detalhado na seção "Diário de bordo".
 
-**Consumer no mesmo processo do backend.** Simplifica o deploy (1 container ao invés de 2). A separação lógica tá feita (módulos distintos, interface por fila), então mover pra worker separado é trivial se precisar escalar.
+**Consumer no mesmo processo do backend.** Simplifica o deploy (1 container em vez de 2). A separação lógica está feita (módulos distintos, interface por fila), então mover para um worker separado é trivial caso seja necessário escalar.
 
-**Front Angular com signals + store central.** Um `MetricsStore` concentra todo o estado compartilhado (form, data, loading, status do upload). Os painéis de filtros e resultados só fazem `inject(MetricsStore)`. Zero prop-drilling.
+**Front Angular com signals + store central.** Um `MetricsStore` concentra todo o estado compartilhado (form, data, loading, status do upload, snapshot da última consulta). Os painéis de filtros e resultados apenas injetam `MetricsStore`. Zero prop-drilling.
 
-**Polling de status do processamento.** Como a ingestão é assíncrona, o front precisa saber quando o banco já tem os dados. Implementei um endpoint `GET /uploads/:blobName/status` que retorna `pending | processing | completed | failed` + contagem de linhas processadas. O front polla a cada 500ms e atualiza a UI em tempo real (mostra "Processando… 45.320 linhas" com barra de progresso amarela, muda pra verde com checkmark quando completa).
+**Polling de status do processamento.** Como a ingestão é assíncrona, o front precisa saber quando o banco já tem os dados. O endpoint `GET /uploads/:blobName/status` retorna `pending | processing | completed | failed` junto com a contagem de linhas processadas. O front consulta a cada 500ms e atualiza a UI em tempo real (exibe "Processando… 45.320 linhas" com barra de progresso amarela, muda para verde com checkmark ao concluir).
 
-**Deploy com scripts shell.** Em `infra/azure/` tem 4 scripts (`provision.sh`, `build-push.sh`, `deploy.sh`, `cleanup.sh`). Sem Terraform, sem Bicep, só `az` CLI — mais legível pra alguém inspecionar rapidamente, e reproduzível.
+**Service de exportação dedicado.** O `ChartExportService` coordena o botão "Baixar PNGs" da sidebar com os canvases do painel de resultados — o painel registra uma função de export no service quando os gráficos estão em tela; a sidebar dispara o batch sem acoplamento direto entre componentes.
+
+**Snapshot da última consulta.** O `lastQuery` guarda o estado do formulário + nome do arquivo no momento em que os resultados foram recebidos. O computed `isStale` compara esse snapshot com o estado atual e controla o banner de "resultados desatualizados" — o dado fica legível, apenas o aviso sinaliza a divergência.
+
+**Swagger em `/api`.** Todos os endpoints (`/uploads`, `/uploads/:blobName/status`, `/metrics/aggregate`, `/metrics/report`, `/health`) documentados com DTOs decorados por `@ApiProperty`. O JSON puro do OpenAPI fica em `/api-json`, pronto para importação em Postman/Insomnia ou geração de SDK.
+
+**Deploy com scripts shell.** Em `infra/azure/` há quatro scripts (`provision.sh`, `build-push.sh`, `deploy.sh`, `cleanup.sh`). Sem Terraform nem Bicep — apenas `az` CLI, mais legível para inspeção rápida e reproduzível.
 
 ## Testes
 
-**68 testes no total**, divididos em back e front.
+**113 testes no total**, divididos entre back e front.
 
 ### Backend — 25 testes, 3 suítes
 
@@ -154,35 +175,39 @@ Upload streama direto pro blob (a API nunca bufera o arquivo), publica uma mensa
 |-------|------|-------|
 | `csv-parser.util.spec.ts` | Unit | 9 |
 | `metrics.repository.spec.ts` | Integração com Postgres real | 13 |
-| `pipeline.e2e.spec.ts` | E2E (sobe o AppModule + Rabbit + Azurite + DB) | 3 |
+| `pipeline.e2e.spec.ts` | E2E (AppModule + Rabbit + Azurite + DB) | 3 |
 
-Rodar: `docker compose exec api npm test`.
+Executar: `docker compose exec api npm test`.
 
-### Frontend — 43 testes, 5 suítes
+### Frontend — 88 testes, 7 suítes
 
 | Suíte | Foco | Casos |
 |-------|------|-------|
 | `format.util.spec.ts` | Formatadores de data/bytes/número | 8 |
 | `csv-meta.util.spec.ts` | Parser de metadados do CSV (BOM, CRLF, `;;`, chunk tail >64KB) | 7 |
 | `api.service.spec.ts` | HTTP calls via `HttpTestingController` | 5 |
-| `theme.service.spec.ts` | Tema com localStorage + `prefers-color-scheme` + effect no DOM | 6 |
-| `metrics.store.spec.ts` | Store central: computeds, exceção metric 999, polling RxJS (completed/failed/404-transitório), clear, consultar | 17 |
+| `theme.service.spec.ts` | Tema com localStorage + effect no DOM (default light, ignora prefers-color-scheme) | 6 |
+| `chart-export.service.spec.ts` | Register/unregister + batch export entre componentes | 6 |
+| `i18n.service.spec.ts` | Locale inicial, persistência, `t()` com params, fallback para pt, missing key | 12 |
+| `metrics.store.spec.ts` | Store central: computeds (total, kpis, histogram, weekdayMeans, isStale), exceção metric 999, polling RxJS, upload preview, consultar | 44 |
 
-Rodar: `docker compose exec frontend npm test`.
+Executar: `docker compose exec frontend npm test`.
 
 ## Diário de bordo
 
 Fica um pouco mais pessoal porque o teste também avalia o processo.
 
-**O CSV tem 3 armadilhas.** Minha primeira versão do parser morreu na linha 2 com "metricId undefined". Era o **BOM UTF-8** no início do arquivo (corrompe o nome da primeira coluna). Arrumei e morreu de novo na linha 93090 com "dateTime invalido". Eram as **8 linhas `;;` vazias** de padding no final do CSV (coisa do Excel quando exporta). Tem também **CRLF** (Windows), esse o `csv-parse` já trata por padrão. No final, o setup do parser ficou: `bom: true, skip_records_with_empty_values: true, delimiter: ';'`. Cobri esses 3 casos em testes explícitos pra não voltar atrás.
+**O CSV tem três armadilhas.** A primeira versão do parser falhou na linha 2 com "metricId undefined". O culpado era o **BOM UTF-8** no início do arquivo (corrompe o nome da primeira coluna). Corrigi e o parser falhou novamente na linha 93090 com "dateTime inválido". O problema dessa vez eram as **8 linhas `;;` vazias** de padding no final do CSV (comportamento do Excel ao exportar). Há também **CRLF** (Windows), esse já tratado pelo `csv-parse` por padrão. No final, o setup do parser ficou: `bom: true, skip_records_with_empty_values: true, delimiter: ';'`. Os três casos estão cobertos em testes explícitos para não regredir.
 
-**Interpretei o Excel errado duas vezes antes de acertar.** Olhei o PDF rápido demais e assumi que cada linha do Excel era um dia agregado (um `GROUP BY day` com as window functions). A matemática batia com o exemplo pequeno do enunciado, mas algo me incomodava: na tabela do PDF, o input é Nov-Dez/2023 e aparecem dias de **Janeiro/2024** na saída. Se tivesse filtro por range, isso não apareceria. Um colega que fez o mesmo teste me mostrou o Excel dele — **centenas de linhas idênticas pro mesmo dia**. Caiu a ficha: o Excel não agrupa. É uma linha por leitura original do banco, com as agregações repetidas em cada linha do mesmo dia/mês/ano, via window function. Reescrevi a query (ficou mais simples, inclusive — só um `SELECT` com 3 `SUM() OVER (PARTITION BY ...)`, sem `GROUP BY` nem `CTE`). Agora bate com o exemplo do PDF e com o output do colega.
+**Interpretei o Excel de forma equivocada duas vezes antes de acertar.** Analisei o PDF rapidamente demais e assumi que cada linha do Excel representava um dia agregado (um `GROUP BY day` com as window functions). A matemática batia com o exemplo pequeno do enunciado, mas algo incomodava: na tabela do PDF, o input é Nov-Dez/2023 e aparecem dias de **Janeiro/2024** na saída. Se houvesse filtro por range, isso não apareceria. Um colega que fez o mesmo teste me mostrou o Excel dele — **centenas de linhas idênticas para o mesmo dia**. Percebi então que o Excel não agrupa: é uma linha por leitura original do banco, com as agregações repetidas em cada linha do mesmo dia/mês/ano, via window function. Reescrevi a query (ficou mais simples, inclusive — apenas um `SELECT` com 3 `SUM() OVER (PARTITION BY ...)`, sem `GROUP BY` nem CTE). O resultado agora corresponde ao exemplo do PDF e ao output do colega.
 
-**Azure CLI do Debian tá travado há mais de um ano.** O pacote `azure-cli` do repo APT do Microsoft pra Debian 12 (bookworm) está em `2.45.0`, de fevereiro/2023. Meu script de deploy usa sintaxe que só existe em 2.60+. Tentei `az upgrade`, `apt-get upgrade`, o script oficial `curl | bash` — nada, todos apontam pro mesmo repo travado. Solução: `pipx install azure-cli`, que puxa do PyPI direto. Deixei anotado no `infra/azure/README.md` pra caso o avaliador rode local.
+**Azure CLI do Debian travado há mais de um ano.** O pacote `azure-cli` do repo APT da Microsoft para Debian 12 (bookworm) está em `2.45.0`, de fevereiro/2023. O script de deploy utiliza sintaxe que só existe a partir da 2.60+. Tentei `az upgrade`, `apt-get upgrade`, o script oficial `curl | bash` — todos apontam para o mesmo repositório travado. Solução: `pipx install azure-cli`, que baixa do PyPI direto. Deixei anotado em `infra/azure/README.md` caso o avaliador execute localmente.
 
-**Azure free tier não tinha Postgres Flex no `eastus` pra minha subscription.** `az postgres flexible-server list-skus --location eastus` veio vazio. Mudei pra `brazilsouth` (tinha 60+ SKUs) e foi — bônus, menos latência do Brasil.
+**Azure free tier não tinha Postgres Flex em `eastus` para minha subscription.** `az postgres flexible-server list-skus --location eastus` retornou vazio. Mudei para `brazilsouth` (60+ SKUs disponíveis) e funcionou — como bônus, menos latência para o Brasil.
 
-**Mexer no layout do front foi mais chato do que o back.** Acabei reconstruindo o layout umas 3 vezes — `sticky` conflitava com `align-items: stretch`, paginação crescendo puxava o painel esquerdo junto, skeleton piscava durante a transição. A solução final usa `align-items: stretch` no grid (ambos os painéis ganham a altura do maior sem hardcode de pixel) + reduzir o `rows` da paginação pra garantir que o direito nunca ultrapassa o natural do esquerdo. A tabela tem uma animação de stagger fade-in (rows aparecem em cascata de 40ms) e uma barra verde fluindo no topo durante loading.
+**O dark mode exigiu override explícito do PrimeNG.** O tema base `lara-light-blue` aplica `background: #ffffff` e `#f9fafb` em dezenas de componentes (tabela, inputs, paginator, calendar) sem passar pelas CSS vars. No dark mode, esses valores hardcoded vazavam e davam a sensação de "fundo claro atrás dos containers". A solução foi uma seção dedicada em `styles.scss` que sobrescreve manualmente cada componente usado, vinculando-os às variáveis `--gy-surface` e `--gy-surface-2` no dark.
+
+**Render da tabela colapsava no novo layout.** O `.gy-table` global tinha `flex: 1 + overflow: hidden` no wrapper do p-datatable — pattern herdado do layout antigo em que o container tinha altura definida. No novo layout (sem chain de height), o wrapper colapsava e cortava 11 das 12 linhas da página. A solução foi transformar o comportamento antigo em uma classe opt-in (`.gy-table-fill`), deixando o default como size-to-content.
 
 ## Estrutura do repo
 
@@ -200,6 +225,6 @@ Fica um pouco mais pessoal porque o teste também avalia o processo.
 
 ---
 
-Qualquer dúvida sobre o código ou decisões, eu tô aqui.
+Qualquer dúvida sobre o código ou as decisões, estou à disposição.
 
 — Caio Alves

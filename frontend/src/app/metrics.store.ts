@@ -56,6 +56,19 @@ export class MetricsStore {
   readonly data = signal<AggregatedPoint[]>([]);
   readonly loading = signal(false);
   readonly searched = signal(false);
+  /**
+   * Snapshot do que gerou o `data()` atual: metricId + range + gran +
+   * nome do arquivo que estava ativo. Usado pra detectar quando os
+   * resultados em tela estao "stale" (ex.: user trocou o CSV sem refazer
+   * a consulta). Null antes da primeira consulta concluida.
+   */
+  readonly lastQuery = signal<{
+    metricId: number;
+    dateInitial: string;
+    finalDate: string;
+    granularity: Granularity;
+    uploadName: string | null;
+  } | null>(null);
 
   // Derived
   readonly total = computed(() =>
@@ -92,6 +105,56 @@ export class MetricsStore {
       minDate,
     };
   });
+
+  /**
+   * Histograma em 8 faixas dos valores agregados. Calculado client-side
+   * sobre o mesmo `data()` — nao exige nova chamada de API. Retorna null
+   * quando nao ha dado (UI mostra placeholder).
+   */
+  readonly histogram = computed(() => {
+    const vs = this.data().map((r) => r.value ?? 0);
+    if (vs.length === 0) return null;
+    const lo = Math.min(...vs);
+    const hi = Math.max(...vs);
+    if (lo === hi) {
+      return { labels: [String(lo)], counts: [vs.length] };
+    }
+    const bins = 8;
+    const step = (hi - lo) / bins;
+    const counts = new Array<number>(bins).fill(0);
+    const labels: string[] = [];
+    for (let i = 0; i < bins; i += 1) {
+      labels.push(String(Math.round(lo + i * step)));
+    }
+    for (const v of vs) {
+      const idx = Math.min(bins - 1, Math.floor((v - lo) / step));
+      counts[idx] += 1;
+    }
+    return { labels, counts };
+  });
+
+  /**
+   * Media por dia-da-semana (indice 0=Dom .. 6=Sab). So' faz sentido
+   * quando granularity === DAY — pra MONTH/YEAR devolve null, a UI
+   * esconde o painel nesses casos. Parse do ISO date e' manual pra
+   * evitar o off-by-one do `new Date('YYYY-MM-DD')` em timezones
+   * negativos.
+   */
+  readonly weekdayMeans = computed<number[] | null>(() => {
+    if (this.granularity() !== 'DAY') return null;
+    const rows = this.data();
+    if (rows.length === 0) return null;
+    const sum = new Array<number>(7).fill(0);
+    const cnt = new Array<number>(7).fill(0);
+    for (const r of rows) {
+      const [y, m, d] = r.date.split('-').map(Number);
+      const dow = new Date(y, m - 1, d).getDay();
+      sum[dow] += r.value ?? 0;
+      cnt[dow] += 1;
+    }
+    return sum.map((s, i) => (cnt[i] ? Math.round(s / cnt[i]) : 0));
+  });
+
   readonly isFormValid = computed(
     () =>
       this.metricId() !== null &&
@@ -118,6 +181,33 @@ export class MetricsStore {
     return status.state === 'completed';
   });
 
+  /**
+   * Resultados em tela refletem um estado divergente do formulário/upload
+   * atual — user trocou arquivo, mexeu nas datas ou no metricId sem
+   * refazer a consulta. Usado pra mostrar um banner "stale" no
+   * ResultsPanel. Falso quando nao ha consulta anterior OU quando esta
+   * carregando (o banner some durante o fetch).
+   */
+  readonly isStale = computed(() => {
+    const q = this.lastQuery();
+    if (!q) return false;
+    if (this.loading()) return false;
+    if (this.data().length === 0) return false;
+    const di = this.dateInitial();
+    const fd = this.finalDate();
+    // Se o user limpou alguma data, obviamente stale — mas nao vale a
+    // pena chamar toIsoDate(null).
+    if (!di || !fd) return true;
+    const currentUpload = this.lastUpload()?.originalName ?? null;
+    return (
+      q.metricId !== this.metricId() ||
+      q.dateInitial !== this.toIsoDate(di) ||
+      q.finalDate !== this.toIsoDate(fd) ||
+      q.granularity !== this.granularity() ||
+      q.uploadName !== currentUpload
+    );
+  });
+
   private readonly api = inject(ApiService);
   private readonly messages = inject(MessageService);
   private readonly i18n = inject(I18nService);
@@ -125,19 +215,33 @@ export class MetricsStore {
 
   consultar(): void {
     if (!this.isFormValid()) return;
+
+    // MetricId 999 e' o demo seed pre-populado no banco — nao depende
+    // de arquivo. Se o user tem um CSV em preview ou ja' enviado e
+    // decide consultar 999, limpa o arquivo antes: os resultados vem
+    // do seed, o arquivo em tela so' confundiria.
+    if (this.metricId() === 999) {
+      if (this.pendingCsv()) this.cancelPendingUpload();
+      if (this.lastUpload()) this.clearUpload();
+    }
+
     this.loading.set(true);
     this.searched.set(true);
 
+    const query = {
+      metricId: this.metricId()!,
+      dateInitial: this.toIsoDate(this.dateInitial()!),
+      finalDate: this.toIsoDate(this.finalDate()!),
+      granularity: this.granularity(),
+    };
+    const uploadName = this.lastUpload()?.originalName ?? null;
+
     this.api
-      .aggregate({
-        metricId: this.metricId()!,
-        dateInitial: this.toIsoDate(this.dateInitial()!),
-        finalDate: this.toIsoDate(this.finalDate()!),
-        granularity: this.granularity(),
-      })
+      .aggregate(query)
       .subscribe({
         next: (rows) => {
           this.data.set(rows);
+          this.lastQuery.set({ ...query, uploadName });
           this.loading.set(false);
         },
         error: (err) => {
