@@ -13,16 +13,39 @@ Para ver a UI com dados sem precisar subir nada, use **metricId=999, 01-01-2024 
 
 ## Rodando localmente
 
-Precisa Docker e Docker Compose (v2+).
+### Pré-requisitos
+
+Só precisa **Docker** e **Docker Compose v2+** — nada de Node, Python ou psql locais, tudo roda em container.
+
+- **Linux (Debian/Ubuntu):** `sudo apt install docker.io docker-compose-plugin` ou siga o [passo-a-passo oficial](https://docs.docker.com/engine/install/). Depois adicione seu usuário ao grupo `docker` pra não precisar `sudo` (`sudo usermod -aG docker $USER` e relogue).
+- **macOS / Windows:** instale o [Docker Desktop](https://www.docker.com/products/docker-desktop/), já vem com Compose v2 embutido.
+
+Confirme que funciona:
 
 ```bash
-git clone git@github.com:caioalvess/greenyellow-fullstack-test.git
+docker --version           # Docker version 24.x+
+docker compose version     # Docker Compose version v2.x
+```
+
+### Subir o ambiente
+
+```bash
+git clone https://github.com/caioalvess/greenyellow-fullstack-test.git
 cd greenyellow-fullstack-test
 cp .env.example .env
 docker compose up -d
 ```
 
-Build leva ~1min na primeira vez. Serviços sobem em:
+O `.env.example` já vem com valores funcionais pra dev — só copia, não precisa editar. A primeira execução builda as imagens do backend e frontend (~1min); nas próximas, sobe em segundos.
+
+### Verificar se subiu
+
+```bash
+curl http://localhost:3001/health
+# {"status":"ok","services":{"postgres":{"status":"ok"},"rabbitmq":{"status":"ok"},"azurite":{"status":"ok"}}}
+```
+
+Se os três serviços retornam `ok`, tá no ar. Acesse:
 
 | Serviço | URL |
 |---------|-----|
@@ -30,11 +53,17 @@ Build leva ~1min na primeira vez. Serviços sobem em:
 | API / Swagger | http://localhost:3001/api |
 | RabbitMQ UI | http://localhost:15672 (`gy_user` / `gy_password`) |
 
+Se algum container não subir, `docker compose logs <serviço>` mostra o erro (ex.: `docker compose logs api`).
+
+### Portas em conflito
+
+As portas expostas ficam no `.env` (`FRONTEND_PORT`, `API_PORT`, `POSTGRES_PORT`, `RABBITMQ_PORT`, `AZURITE_BLOB_PORT`). Se já tem algo rodando em 4200/3001/5432/etc, troque no `.env` e rode `docker compose up -d` de novo.
+
 ### Fluxo de uso
 
-1. Abra o front.
-2. Arraste o CSV (tem um em `greenwellow-test/arquivo-modelo.csv`).
-3. Confirma no preview (ele já detecta metricId e intervalo de datas).
+1. Abra o front em http://localhost:4200.
+2. Arraste um CSV (tem um em `greenwellow-test/arquivo-modelo.csv`).
+3. Confirme no preview — o sistema já detecta metricId e intervalo de datas e prefilla o form.
 4. **Consultar** gera gráfico + tabela. **Baixar Excel** gera o relatório.
 
 ### Testes
