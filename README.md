@@ -1,27 +1,19 @@
 # GreenYellow — Teste Full Stack
 
-Teste técnico para vaga de Full Stack. O objetivo é receber um CSV de leituras de métricas, processar em background, armazenar no banco e expor endpoints de consulta (agregação por dia/mês/ano) e de relatório Excel. No front, uma interface para enviar o arquivo, consultar e baixar o relatório — com gráficos, KPIs, tabela paginada, dark mode e internacionalização.
+Recebe CSV de leituras, salva no blob storage, processa em background via fila e expõe endpoints de agregação e relatório Excel. Front em Angular para subir arquivo, consultar e baixar.
 
-## 🌐 Rodando em produção
+## Rodando em produção
 
-Existe um deploy no Azure Container Apps em funcionamento:
+Deploy no Azure Container Apps:
 
 - **Frontend:** https://gy-frontend.victoriousriver-e45d55dc.brazilsouth.azurecontainerapps.io
-- **API (health):** https://gy-api.victoriousriver-e45d55dc.brazilsouth.azurecontainerapps.io/health
-- **Swagger:** https://gy-api.victoriousriver-e45d55dc.brazilsouth.azurecontainerapps.io/api
+- **API / Swagger:** https://gy-api.victoriousriver-e45d55dc.brazilsouth.azurecontainerapps.io/api
 
-Para testar a paginação sem precisar enviar um arquivo, há um dataset sintético pré-populado no banco. Na tela do front, utilize:
+Para ver a UI com dados sem precisar subir nada, use **metricId=999, 01-01-2024 a 01-03-2024, Dia** — existe um seed com 60 dias × 24h pra essa métrica.
 
-- **MetricId:** `999`
-- **Data inicial:** `01-01-2024`
-- **Data final:** `01-03-2024`
-- **Granularidade:** `Dia`
+## Rodando localmente
 
-São 60 pontos em 5 páginas. O seed (`db/seed-demo.sql`) gera 1440 leituras sintéticas para a métrica 999 cobrindo Jan-Fev/2024 — útil para testar manualmente cenários de tabela cheia que o `arquivo-modelo.csv` do enunciado (apenas dois dias de dados por métrica) não cobre. A métrica 999 é tratada como exceção no front: o botão Consultar fica liberado sem exigir upload, e, se houver arquivo em pré-visualização ou já enviado, ele é descartado antes da consulta (os resultados vêm do seed, não do arquivo).
-
-## Como rodar localmente
-
-**Pré-requisitos:** Docker e Docker Compose (v2+).
+Precisa Docker e Docker Compose (v2+).
 
 ```bash
 git clone git@github.com:caioalvess/greenyellow-fullstack-test.git
@@ -30,210 +22,128 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Na primeira execução o build das imagens leva aproximadamente 1 minuto; nas seguintes, segundos. Os serviços ficam em:
+Build leva ~1min na primeira vez. Serviços sobem em:
 
 | Serviço | URL |
 |---------|-----|
 | Frontend | http://localhost:4200 |
-| API | http://localhost:3001 |
-| Swagger | http://localhost:3001/api |
-| RabbitMQ UI | http://localhost:15672 (login `gy_user` / senha `gy_password`) |
+| API / Swagger | http://localhost:3001/api |
+| RabbitMQ UI | http://localhost:15672 (`gy_user` / `gy_password`) |
 
-### Usar
+### Fluxo de uso
 
-1. Abra o frontend.
-2. Arraste (ou clique para selecionar) o `arquivo-modelo.csv` presente na raiz do repositório.
-3. Uma pré-visualização aparece com metricId detectado, tamanho e intervalo de datas — clique em **Enviar** para confirmar o upload.
-4. Os campos do formulário são preenchidos automaticamente com base no conteúdo do CSV.
-5. Clique em **Consultar** para ver os resultados (gráfico ou tabela), ou em **Baixar Excel** para o relatório completo.
+1. Abra o front.
+2. Arraste o CSV (tem um em `greenwellow-test/arquivo-modelo.csv`).
+3. Confirma no preview (ele já detecta metricId e intervalo de datas).
+4. **Consultar** gera gráfico + tabela. **Baixar Excel** gera o relatório.
 
-### (Opcional) Popular o banco com o dataset demo
+### Testes
 
 ```bash
-docker exec -i gy-postgres psql -U gy_user -d gy_metrics < db/seed-demo.sql
+docker compose exec api npm test        # backend
+docker compose exec frontend npm test   # frontend
 ```
 
-Insere 1440 linhas para a métrica 999 (60 dias × 24h em Jan-Fev/2024). A operação é idempotente — pode ser executada várias vezes sem duplicar dados.
+### Logs do pipeline
 
-### Rodar os testes
+Cada etapa do fluxo tem um log com emoji pra ficar fácil de acompanhar (upload → hash → Azurite → fila → consumer → banco → consulta → cleanup).
 
 ```bash
-docker compose exec api npm test        # backend (32 testes)
-docker compose exec frontend npm test   # frontend (96 testes)
+docker logs -f gy-api                                                          # tudo
+docker logs -f gy-api 2>&1 | grep -E '📥|🧮|☁️|✅|🚫|🔁|💾|📤|🔗|⬇️|📊|🧹|🔎|📈|❌|⚠️'   # só o pipeline
 ```
 
-**128 testes no total.** O backend sobe um banco separado (`gy_metrics_test`) em 3 suítes (~10s); o frontend usa Jest + jsdom em 7 suítes (~25s). Detalhes de cobertura na seção *Testes* abaixo.
+Exemplo do que sai num upload + consulta:
 
-### Produção local
-
-Para executar as imagens de produção (nginx servindo o front estático, backend compilado sem dev deps):
-
-```bash
-docker compose --profile prod up -d
 ```
-
-O frontend de produção responde em `http://localhost:8080` e a API em `http://localhost:3003`. O profile `prod` coexiste com o dev (portas diferentes) para facilitar comparação.
+[UploadsService]     📥 upload recebido → arquivo.csv (2.34MB)
+[UploadsService]     🧮 hash computado → sha256=a6e116fd32de…
+[UploadsService]     ☁️  armazenado no Azurite → blob=<uuid>-arquivo.csv
+[UploadsService]     ✅ dedup → hash inedito, segue o fluxo
+[UploadsService]     🔁 substituicao → blob anterior removido do Azurite
+[UploadsService]     💾 csv_uploads → registro salvo id=<uuid>
+[UploadsService]     📤 rabbitmq → mensagem publicada na fila "csv.uploaded"
+[CsvConsumerService] 📥 rabbitmq → mensagem consumida
+[CsvConsumerService] 🔗 vinculado ao upload → id=<uuid> sha256=a6e116fd32de…
+[CsvConsumerService] ⬇️  baixando stream do Azurite
+[CsvConsumerService] 📊 parse → iniciando em lotes de 1000 linhas
+[CsvConsumerService] ✅ processamento concluido → 93088/93088 linhas · 2143ms
+[MetricsController]  🔎 aggregate → metricId=71412 range=2023-11-01..2023-12-31 gran=DAY
+[MetricsRepository]  🧹 cleanup → removidas 0 leitura(s) e 0 upload(s) antigo(s)
+[MetricsController]  📈 aggregate → 30 ponto(s) retornado(s)
+```
 
 ### Parar
 
 ```bash
 docker compose down       # mantém dados
-docker compose down -v    # reseta tudo, inclusive banco
+docker compose down -v    # reseta tudo
 ```
 
 ## Stack
 
 - **Backend:** NestJS 10, TypeScript, Node 20, Swagger via `@nestjs/swagger`
-- **Banco:** PostgreSQL 16 — entidades mapeadas via TypeORM, **consultas em SQL puro** (conforme o enunciado solicitou)
-- **Fila:** RabbitMQ 3 via `amqplib` direto
-- **Storage:** Azurite em dev, Azure Blob Storage em produção (mesma connection string, sem alteração no código)
-- **Frontend:** Angular 17 + PrimeNG 17, Chart.js 4, tema custom com paleta da GreenYellow, dark mode com override explícito dos componentes PrimeNG, i18n pt-BR/en/es/fr via signals
-- **Testes:** Jest no backend (unit + integração real + E2E com Supertest) e no frontend (jest-preset-angular + jsdom)
-- **Infra:** Docker Compose em dev; Azure Container Apps em produção
+- **Banco:** PostgreSQL 16 — TypeORM só pro mapeamento de entidades, **queries em SQL puro**
+- **Fila:** RabbitMQ 3 (amqplib direto, sem wrapper)
+- **Storage:** Azurite em dev, Azure Blob Storage em prod (mesma connection string, mesmo código)
+- **Frontend:** Angular 17 + PrimeNG 17, Chart.js 4, signals, dark mode, i18n pt-BR/en/es/fr
+- **Infra:** Docker Compose em dev; Azure Container Apps em prod
 
 ## Fluxo
 
 ```
- ┌──────────────────┐         ┌─────────────┐
- │  Angular 17 SPA  │  HTTP   │  NestJS 10  │
- │     PrimeNG      ├────────>│    API      │
- └──────────────────┘         └──────┬──────┘
-                      stream upload  │
-                                     ▼
-                              ┌──────────────┐
-                              │   Azurite    │
-                              │ / Azure Blob │◄── stream download
-                              └──────┬───────┘            │
-                    mensagem com     │                    │
-                    nome do blob     ▼                    │
-                              ┌──────────────┐            │
-                              │  RabbitMQ    │            │
-                              │ csv.uploaded │            │
-                              └──────┬───────┘            │
-                                     │ consume            │
-                                     ▼                    │
-                              ┌──────────────┐            │
-                              │  Consumer    │────────────┘
-                              │ csv-parse    │
-                              │ streaming    │
-                              └──────┬───────┘
-                                     │ batch insert (1000 linhas)
-                                     ▼
-                              ┌──────────────┐
-                              │ Postgres 16  │
-                              │metric_readings
-                              └──────────────┘
+Upload (POST /uploads)
+  Frontend ──stream──► API
+                      │  ├─ SHA-256 inline (pass-through, sem bufferizar)
+                      │  ├─ store no Azurite
+                      │  └─ hash ja existe? ── SIM ──► 409, deleta blob novo
+                      │                      └─ NAO ──► grava csv_uploads,
+                      │                                 deleta blob anterior,
+                      │                                 publica na fila
+                      ▼
+                    RabbitMQ (csv.uploaded)
+                      │
+                      ▼
+                   Consumer
+                      ├─ download stream do Azurite
+                      ├─ parse em lotes de 1000
+                      └─ INSERT metric_readings(..., csv_upload_id) ON CONFLICT DO NOTHING
+
+Query (GET /metrics/aggregate, GET /metrics/report)
+  ├─ cleanup: apaga linhas de uploads anteriores ao ativo
+  ├─ SUM(value) agrupado por dia/mes/ano
+  └─ devolve pontos
 ```
 
-O upload é encaminhado via stream direto para o blob (a API não bufferiza o arquivo), publica uma mensagem com o nome do blob e responde `201` imediatamente. O consumer, em background, baixa o blob também em stream, faz o parse com `csv-parse` assíncrono e insere em lotes de 1000 linhas usando `ON CONFLICT DO NOTHING` para garantir idempotência. O front faz polling em `GET /uploads/:blobName/status` para exibir "processando… 45.000 linhas" em tempo real.
+Upload responde `201` assim que o blob sobe + a mensagem entra na fila — o consumer processa em background. O front faz polling em `GET /uploads/:blobName/status` (500ms) pra mostrar "processando… 45.320 linhas" em tempo real.
 
 ## Funcionalidades do frontend
 
-- **Upload com pré-visualização** — ao soltar/selecionar um CSV, uma prévia aparece com o metricId detectado, nome do arquivo, tamanho e intervalo de datas. O envio só ocorre após confirmação.
-- **Formulário de consulta** — metricId, intervalo de datas (com máscara `DD-MM-AAAA`), atalhos de período (Últimos 7 dias, Últimos 30 dias, Este mês, Este ano) e granularidade (Dia/Mês/Ano).
-- **Resultados em dois modos** — tabela paginada (default, com dia da semana em chip) ou gráfico. Alternável em tempo real.
-- **KPIs derivados** — Total (Σ, destaque em gradiente lime), Média (μ), Pico (▲, com data) e Mínimo (▼, com data). Computados client-side a partir do array devolvido pelo `/aggregate`.
-- **Gráficos complementares** — gráfico principal (linha + área), distribuição (histograma de 8 faixas) e média por dia da semana (exibida apenas quando a granularidade é Dia).
-- **Exportação de PNG** — individual por gráfico (botão com ícone) ou lote (botão "Baixar PNGs" na sidebar, visível apenas em modo gráfico).
-- **Banner de resultados desatualizados** — se o formulário ou o arquivo são alterados após uma consulta, um aviso sutil aparece no topo do painel com botão "Refazer consulta".
-- **Dark mode** — toggle no header do painel de resultados, com override explícito dos componentes PrimeNG (tabela, inputs, calendar, paginator) para evitar vazamento do tema claro.
-- **Internacionalização** — quatro idiomas (pt-BR, en, es, fr), selector no header, persistência em `localStorage`, `<html lang>` atualizado reativamente.
+- **Upload com preview** — detecta metricId, intervalo de datas e contagem aproximada de linhas antes de enviar; prefill automático do form.
+- **Formulário** — metricId, intervalo de datas (máscara `DD-MM-AAAA`), atalhos (últimos 7/30 dias, este mês, este ano) e granularidade Dia/Mês/Ano.
+- **Resultados em dois modos** — tabela paginada ou gráfico, alternável na hora.
+- **KPIs** — total, média, pico (com data) e mínimo (com data). Calculados no front em cima do array do `/aggregate`.
+- **Gráficos extras** — distribuição em 8 faixas e média por dia-da-semana (só em granularidade Dia).
+- **Exportação PNG** — gráfico individual ou todos em lote.
+- **Banner "resultados desatualizados"** — aparece quando você subiu um arquivo novo mas ainda não re-consultou.
+- **Dark mode** — override explícito dos componentes PrimeNG (o tema lara-light-blue tem background hardcoded em vários lugares).
+- **i18n** — pt-BR / en / es / fr, selector no header, persiste em localStorage.
+- **Persistência de sessão** — F5 não perde nada. Form + snapshot da última consulta ficam em localStorage; os dados em si vêm do banco via re-fetch no boot.
 
 ## Principais decisões
 
-**SQL puro nas queries, ORM apenas para modelagem.** O enunciado pediu preferência por SQL puro; o TypeORM cuida apenas do mapeamento da entidade. Todas as consultas (aggregate, report, insert em batch) usam `dataSource.query(sql, params)`.
+**Substituição por hash ao invés de acumulação.** O enunciado não diz o que acontece quando você sobe um segundo CSV: os dados somam? substituem? se multiplicam quando o conteúdo se sobrepõe? Adotei **um arquivo ativo por vez** com dedup por SHA-256 — o storage sempre tem exatamente 1 blob, e o banco substitui os dados na próxima query. Reenvio idêntico cai em `409 Conflict` cedo (hash batendo numa tabela `csv_uploads`), evitando stream + parse + insert de um arquivo que viraria no-op depois pelo unique no Postgres. Hash é calculado inline via um `Transform` stream (`Sha256PassThrough`), então o pipeline continua zero-buffer.
 
-**Tabela `metric_readings` crua**, sem pré-agregação. `UNIQUE (metric_id, date_time)` serve como dedupe e o índice composto é utilizado em todas as queries. O `EXPLAIN ANALYZE` confirma `Index Scan` em tempo sub-milissegundo para range de uma métrica.
+**Substituição em duas fases: storage eager, banco lazy.** No upload o Azurite já é atualizado (delete do blob anterior + store do novo), mas os dados do banco só são substituídos quando o usuário manda consultar. Isso porque enquanto o upload novo está em processamento, a tela ainda mostra a consulta anterior — mexer no banco cedo demais desalinharia UI e dados. O `cleanupStaleUploads()` roda como pré-passo em `/metrics/aggregate` e `/metrics/report`, apaga as linhas do upload anterior e segue com a query. Enquanto isso, o banner "resultados desatualizados" já avisa o usuário que tem dado novo esperando.
 
-**Streaming ponta a ponta.** Upload, download e parse. Testei com um CSV sintético de 31MB / 1.2M linhas e o pico de RAM da API ficou em **+53 MiB** sobre o baseline — independente do tamanho do arquivo. Isso resolveu um ponto que um colega que fez o mesmo teste havia alertado: o CSV de exemplo é pequeno, mas se o avaliador enviar um grande, buferizar tudo esgota a memória.
+**Persistência no F5 com re-fetch do banco.** O enunciado mandou salvar no banco e no storage, então não fazia sentido o front descartar a sessão quando o usuário recarrega — a informação tá lá, só precisa ser buscada. O `MetricsStore` serializa o estado de navegação em `localStorage` (form + snapshot da última consulta — nunca os dados em si) via um `effect()` do Angular. No boot, um `hydrateFromStorage()` popula os signals e, se havia última consulta, dispara um GET pra o array vir **fresco** do Postgres. Snapshot corrompido ou storage indisponível caem silenciosamente numa sessão vazia.
 
-**Idempotência via `ON CONFLICT DO NOTHING`.** Reenvio ou reprocessamento não duplica linhas. Há testes explícitos para o cenário.
+**Streaming ponta a ponta.** Upload, hash, store no Azurite, download no consumer, parse e batch insert — tudo em stream. Pico de memória da API num CSV sintético de 31MB / 1.2M linhas ficou em +53MiB sobre o baseline, independente do tamanho. Se o avaliador decidir mandar um arquivo de 500MB, não estoura.
 
-**Dedupe por SHA-256 antes da fila.** Com a versão inicial, o banco garantia idempotência via unique de `(metricId, dateTime)`, mas um reenvio do mesmo arquivo ainda gerava um blob novo no Azurite e desperdiçava um ciclo completo de parse + inserção (para tudo ser descartado pelo conflict). Adicionei um `Sha256PassThrough` (Transform stream que hasheia inline enquanto faz o pipe pro blob) e uma tabela `csv_uploads` com unique em `sha256`. O fluxo atualizado: o engine do Multer pipa o arquivo através do hasher pro Azurite; quando termina, o `UploadsService` consulta o hash no Postgres — se existir, **deleta o blob recém-uploaded** e responde `409 Conflict` com os metadados do upload original (`{existing: {originalName, uploadedAt, size}}`); se não existir, grava o registro e publica pra fila. Há também try/catch do unique constraint `23505` na escrita pra cobrir o caso de dois uploads simultâneos com o mesmo conteúdo (o primeiro grava, o segundo volta com 409). A stream continua sendo ponta a ponta — o hash não bufferiza nada. Testes cobrem: o `Sha256PassThrough` em isolado (3 casos) e o fluxo E2E de duplicata retornando 409 com `existing` preenchido. No front, o toast tratando o 409 usa severity `warn` ao invés de `error` pra não parecer falha — é o sistema recusando trabalho redundante, não um bug.
+**SQL puro nas queries.** Enunciado pediu preferência e a escolha combinou com o caso: aggregate + report são 2 queries estáticas com window functions, não tem construção dinâmica que justificasse query builder. TypeORM continua responsável pelo mapeamento das entidades (`MetricReading`, `CsvUpload`) e pelo synchronize em dev.
 
-**Um arquivo ativo por vez — substituição em duas fases (storage eager, banco lazy).** Depois da primeira rodada de teste, ficou claro que a acumulação silenciosa confundia o uso: "por que o gráfico mudou se eu subi um arquivo novo que cobria o mesmo período?". A semântica que faz sentido pro usuário é **um arquivo ativo por vez** — o sistema tem exatamente uma sessão de dados. Mas como a UI mostra a consulta anterior enquanto o novo upload está em pré-visualização/processando, a substituição não pode ser instantânea nos dois lados, senão o dado em tela ficaria desalinhado com os números do banco. Dividi em duas fases: **no upload, o Azurite é atualizado imediatamente** (delete do blob anterior + store do novo — o storage sempre tem exatamente 1 arquivo); **no banco, a substituição é lazy** — as linhas do upload anterior continuam vivas junto com as do novo, cada uma marcada com o `csv_upload_id` de origem. No próximo `GET /metrics/aggregate` ou `/metrics/report`, um `cleanupStaleUploads()` roda como pré-passo: encontra o upload mais recente (ativo), apaga linhas com `csv_upload_id` diferente e as próprias linhas antigas do `csv_uploads`. O usuário só vê os números do arquivo novo quando **ele manda consultar** — até lá, o banner "resultados desatualizados" já sinaliza a pendência. Como consequência, a unique do `metric_readings` virou `(metricId, dateTime, csv_upload_id)`: permite que o mesmo (metric, timestamp) coexista em dois uploads durante a janela entre upload e próxima consulta (sem essa coluna no unique, `ON CONFLICT DO NOTHING` do consumer ignoraria as linhas do arquivo novo quando colidissem com o antigo — a substituição quebraria). Linhas com `csv_upload_id IS NULL` (seed demo do metric 999) são tratadas como permanentes e nunca entram na limpeza. Consumer também foi blindado pros casos de corrida: se o blob foi substituído antes dele processar, ou se o registro correspondente em `csv_uploads` não existe mais, a mensagem é ack-ada com um warn e a fila não trava.
+## Melhorias futuras
 
-**Logs do pipeline passo a passo.** Pra facilitar a inspeção visual de como o fluxo atravessa os serviços (API → Azurite → RabbitMQ → Consumer → Postgres), cada etapa tem um log com prefixo emoji identificando o ponto — `📥 upload recebido`, `🧮 hash computado`, `☁️  armazenado no Azurite`, `✅ dedup`, `🔁 substituicao` (quando tem blob anterior pra apagar), `💾 csv_uploads → registro salvo`, `📤 rabbitmq → mensagem publicada`, `📥 rabbitmq → mensagem consumida`, `🔗 vinculado ao upload`, `⬇️  baixando stream`, `📊 parse`, `📊 lote #N` (primeiro, décimo, depois a cada 25 pra não poluir com arquivos grandes), `✅ processamento concluido`, `🔎 aggregate`, `🧹 cleanup`, `📈 aggregate → N ponto(s)`. Basta `docker logs -f gy-api` durante um upload+consulta pra ver o fluxo completo com blob name, sha256 prefixo, upload_id, contagens e timings.
-
-**Relatório Excel com window functions (sem `GROUP BY`).** Detalhado na seção "Diário de bordo".
-
-**Consumer no mesmo processo do backend.** Simplifica o deploy (1 container em vez de 2). A separação lógica está feita (módulos distintos, interface por fila), então mover para um worker separado é trivial caso seja necessário escalar.
-
-**Front Angular com signals + store central.** Um `MetricsStore` concentra todo o estado compartilhado (form, data, loading, status do upload, snapshot da última consulta). Os painéis de filtros e resultados apenas injetam `MetricsStore`. Zero prop-drilling.
-
-**Polling de status do processamento.** Como a ingestão é assíncrona, o front precisa saber quando o banco já tem os dados. O endpoint `GET /uploads/:blobName/status` retorna `pending | processing | completed | failed` junto com a contagem de linhas processadas. O front consulta a cada 500ms e atualiza a UI em tempo real (exibe "Processando… 45.320 linhas" com barra de progresso amarela, muda para verde com checkmark ao concluir).
-
-**Service de exportação dedicado.** O `ChartExportService` coordena o botão "Baixar PNGs" da sidebar com os canvases do painel de resultados — o painel registra uma função de export no service quando os gráficos estão em tela; a sidebar dispara o batch sem acoplamento direto entre componentes.
-
-**Snapshot da última consulta.** O `lastQuery` guarda o estado do formulário + nome do arquivo no momento em que os resultados foram recebidos. O computed `isStale` compara esse snapshot apenas com o arquivo em **pré-visualização** (`pendingCsv`) — se há um CSV novo prestes a ser enviado cujo nome não bate com o do arquivo que gerou os resultados em tela, o banner aparece. Mexer em datas/metricId/granularidade sozinhos não dispara o aviso (era ruidoso: cada tecla na data atualizava a detecção). O foco do banner é "você está prestes a enviar um arquivo diferente — quer refazer a consulta?", não "qualquer coisa mudou no formulário".
-
-**Persistência de sessão no `localStorage` com re-fetch do banco.** F5 não pode fazer o usuário perder o que ele estava vendo, mas o banco é a fonte da verdade — não faz sentido armazenar um snapshot dos dados no browser e arriscar mostrar números defasados. A solução é persistir apenas o **estado de navegação**: metricId, datas, granularidade, metadados do `lastUpload`/`uploadStatus`, e o `lastQuery`. Um `effect()` do Angular escuta todos esses signals e serializa em `gy.metrics.session.v1` (a versão no nome da chave invalida snapshots legados se o shape mudar). No `constructor` do `MetricsStore`, antes de registrar o effect, `hydrateFromStorage()` lê a chave e popula os signals; se havia `lastQuery`, dispara um `GET /metrics/aggregate` com aqueles parâmetros pra recarregar o array `data` direto do Postgres. O array em si **nunca** vai pro storage — sempre vem do banco. Snapshot corrompido, quota excedida ou storage indisponível são tratados como sessão vazia, sem toast de erro (o usuário não disparou nada). Na prática: o avaliador consulta, vê os gráficos, dá F5 e encontra exatamente o mesmo form preenchido + mesmos gráficos (com dado fresco), confirmando que nada é fake — tudo vem do banco, que persiste entre sessões porque o sistema é cumulativo.
-
-**Swagger em `/api`.** Todos os endpoints (`/uploads`, `/uploads/:blobName/status`, `/metrics/aggregate`, `/metrics/report`, `/health`) documentados com DTOs decorados por `@ApiProperty`. O JSON puro do OpenAPI fica em `/api-json`, pronto para importação em Postman/Insomnia ou geração de SDK.
-
-**Deploy com scripts shell.** Em `infra/azure/` há quatro scripts (`provision.sh`, `build-push.sh`, `deploy.sh`, `cleanup.sh`). Sem Terraform nem Bicep — apenas `az` CLI, mais legível para inspeção rápida e reproduzível.
-
-## Testes
-
-**113 testes no total**, divididos entre back e front.
-
-### Backend — 32 testes, 4 suítes
-
-| Suíte | Tipo | Casos |
-|-------|------|-------|
-| `csv-parser.util.spec.ts` | Unit | 9 |
-| `hashing-stream.spec.ts` | Unit (SHA-256 pass-through) | 3 |
-| `metrics.repository.spec.ts` | Integração com Postgres real (insertBatch por upload, cleanupStaleUploads, aggregate, report) | 16 |
-| `pipeline.e2e.spec.ts` | E2E (AppModule + Rabbit + Azurite + DB) | 4 |
-
-Executar: `docker compose exec api npm test`.
-
-### Frontend — 96 testes, 7 suítes
-
-| Suíte | Foco | Casos |
-|-------|------|-------|
-| `format.util.spec.ts` | Formatadores de data/bytes/número | 8 |
-| `csv-meta.util.spec.ts` | Parser de metadados do CSV (BOM, CRLF, `;;`, chunk tail >64KB) | 7 |
-| `api.service.spec.ts` | HTTP calls via `HttpTestingController` | 5 |
-| `theme.service.spec.ts` | Tema com localStorage + effect no DOM (default light, ignora prefers-color-scheme) | 6 |
-| `chart-export.service.spec.ts` | Register/unregister + batch export entre componentes | 6 |
-| `i18n.service.spec.ts` | Locale inicial, persistência, `t()` com params, fallback para pt, missing key | 12 |
-| `metrics.store.spec.ts` | Store central: computeds (total, kpis, histogram, weekdayMeans, isStale, isSubmittable), exceção metric 999, polling RxJS, upload preview, consultar (com pendingCsv e dedup), persistência + re-fetch | 52 |
-
-Executar: `docker compose exec frontend npm test`.
-
-## Diário de bordo
-
-Fica um pouco mais pessoal porque o teste também avalia o processo.
-
-**O CSV tem três armadilhas.** A primeira versão do parser falhou na linha 2 com "metricId undefined". O culpado era o **BOM UTF-8** no início do arquivo (corrompe o nome da primeira coluna). Corrigi e o parser falhou novamente na linha 93090 com "dateTime inválido". O problema dessa vez eram as **8 linhas `;;` vazias** de padding no final do CSV (comportamento do Excel ao exportar). Há também **CRLF** (Windows), esse já tratado pelo `csv-parse` por padrão. No final, o setup do parser ficou: `bom: true, skip_records_with_empty_values: true, delimiter: ';'`. Os três casos estão cobertos em testes explícitos para não regredir.
-
-**Interpretei o Excel de forma equivocada duas vezes antes de acertar.** Analisei o PDF rapidamente demais e assumi que cada linha do Excel representava um dia agregado (um `GROUP BY day` com as window functions). A matemática batia com o exemplo pequeno do enunciado, mas algo incomodava: na tabela do PDF, o input é Nov-Dez/2023 e aparecem dias de **Janeiro/2024** na saída. Se houvesse filtro por range, isso não apareceria. Um colega que fez o mesmo teste me mostrou o Excel dele — **centenas de linhas idênticas para o mesmo dia**. Percebi então que o Excel não agrupa: é uma linha por leitura original do banco, com as agregações repetidas em cada linha do mesmo dia/mês/ano, via window function. Reescrevi a query (ficou mais simples, inclusive — apenas um `SELECT` com 3 `SUM() OVER (PARTITION BY ...)`, sem `GROUP BY` nem CTE). O resultado agora corresponde ao exemplo do PDF e ao output do colega.
-
-**Azure CLI do Debian travado há mais de um ano.** O pacote `azure-cli` do repo APT da Microsoft para Debian 12 (bookworm) está em `2.45.0`, de fevereiro/2023. O script de deploy utiliza sintaxe que só existe a partir da 2.60+. Tentei `az upgrade`, `apt-get upgrade`, o script oficial `curl | bash` — todos apontam para o mesmo repositório travado. Solução: `pipx install azure-cli`, que baixa do PyPI direto. Deixei anotado em `infra/azure/README.md` caso o avaliador execute localmente.
-
-**Azure free tier não tinha Postgres Flex em `eastus` para minha subscription.** `az postgres flexible-server list-skus --location eastus` retornou vazio. Mudei para `brazilsouth` (60+ SKUs disponíveis) e funcionou — como bônus, menos latência para o Brasil.
-
-**O dark mode exigiu override explícito do PrimeNG.** O tema base `lara-light-blue` aplica `background: #ffffff` e `#f9fafb` em dezenas de componentes (tabela, inputs, paginator, calendar) sem passar pelas CSS vars. No dark mode, esses valores hardcoded vazavam e davam a sensação de "fundo claro atrás dos containers". A solução foi uma seção dedicada em `styles.scss` que sobrescreve manualmente cada componente usado, vinculando-os às variáveis `--gy-surface` e `--gy-surface-2` no dark.
-
-**Render da tabela colapsava no novo layout.** O `.gy-table` global tinha `flex: 1 + overflow: hidden` no wrapper do p-datatable — pattern herdado do layout antigo em que o container tinha altura definida. No novo layout (sem chain de height), o wrapper colapsava e cortava 11 das 12 linhas da página. A solução foi transformar o comportamento antigo em uma classe opt-in (`.gy-table-fill`), deixando o default como size-to-content.
-
-## Estrutura do repo
-
-```
-.
-├── backend/                 # NestJS API
-├── frontend/                # Angular + PrimeNG
-├── db/
-│   └── seed-demo.sql        # seed do metric 999 (demo de paginação)
-├── infra/azure/             # scripts de deploy no Azure
-├── docker-compose.yml
-├── arquivo-modelo.csv       # arquivo de exemplo do enunciado
-└── README.md
-```
-
----
-
-Qualquer dúvida sobre o código ou as decisões, estou à disposição.
-
-— Caio Alves
+- **Múltiplos arquivos ativos + cruzamento de dados.** A maior evolução seria abandonar o modelo "um arquivo por vez" e permitir que o usuário gerencie um acervo de uploads — subir vários CSVs, nomear/taguear, escolher em tempo de consulta quais incluir, cruzar métricas de arquivos diferentes num mesmo gráfico, comparar períodos. Exigiria uma tela de gerenciamento de uploads, filtros por upload no `/aggregate` e provavelmente alguma UI de comparação (dois gráficos lado a lado, diff de valores).
+- **Worker separado pro consumer.** Hoje o consumer roda no mesmo processo da API pra simplificar o deploy. Escalando, separar num container dedicado deixa upload/query e ingest independentes — a API não trava sob carga de processamento e o worker pode ter replicas horizontalmente.
+- **DLQ + retries exponenciais no Rabbit.** Hoje mensagem com erro no consumer é descartada (`nack(false, false)`). Em produção séria, o ideal é requeue com backoff + dead letter queue pra inspeção manual. Azure AMQP Service Bus já suporta nativamente; no RabbitMQ precisa de plugin ou shovel.
