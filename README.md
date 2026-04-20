@@ -190,3 +190,15 @@ Upload responde `201` assim que o blob sobe + a mensagem entra na fila — o con
 - **Múltiplos arquivos ativos + cruzamento de dados.** A maior evolução seria abandonar o modelo "um arquivo por vez" e permitir que o usuário gerencie um acervo de uploads — subir vários CSVs, nomear/taguear, escolher em tempo de consulta quais incluir, cruzar métricas de arquivos diferentes num mesmo gráfico, comparar períodos. Exigiria uma tela de gerenciamento de uploads, filtros por upload no `/aggregate` e provavelmente alguma UI de comparação (dois gráficos lado a lado, diff de valores).
 - **Worker separado pro consumer.** Hoje o consumer roda no mesmo processo da API pra simplificar o deploy. Escalando, separar num container dedicado deixa upload/query e ingest independentes — a API não trava sob carga de processamento e o worker pode ter replicas horizontalmente.
 - **DLQ + retries exponenciais no Rabbit.** Hoje mensagem com erro no consumer é descartada (`nack(false, false)`). Em produção séria, o ideal é requeue com backoff + dead letter queue pra inspeção manual. Azure AMQP Service Bus já suporta nativamente; no RabbitMQ precisa de plugin ou shovel.
+
+## Uso de IA no desenvolvimento
+
+Parte do projeto foi construída com apoio de IA como ferramenta de produtividade, em pontos específicos:
+
+- **Documentação** — ajudou com formatação Markdown, tabelas, diagramas ASCII e consistência entre seções do README.
+- **Testes** — acelerou a escrita de boilerplate (fixtures, mocks, setup de Jest/TestBed). Os casos e expectativas continuam sendo minha responsabilidade; a IA tirou do caminho a parte repetitiva.
+- **NestJS** — como não estava com contato diário com a stack há um tempo, usei como referência rápida pra decoradores, pipes, injeção de dependência e detalhes do Multer/storage engines — economiza ida pra documentação sem perder controle do código.
+- **Refactor e comentários** — revisão de trechos buscando simplificação, nomeação mais clara e comentários que expliquem *o porquê* (não o *o quê* óbvio) em lugares não triviais.
+- **i18n** — tradução das strings do dicionário pros 4 idiomas (pt-BR / en / es / fr). Muito mais prático que fazer string por string em tradutor.
+
+No geral trato IA como amplificador: acelera o que eu já faria de qualquer forma e libera tempo pras decisões que importam — desenho de fluxo, trade-offs, UX, arquitetura. Cada linha comitada passou pela minha revisão.
